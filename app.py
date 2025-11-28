@@ -11,6 +11,7 @@ import random
 import numpy as np
 import threading
 import websocket
+from io import StringIO
 from datetime import datetime, timedelta
 from dash import Dash, dcc, html, ctx
 from dash.dependencies import Input, Output, State, ALL
@@ -106,7 +107,7 @@ def on_message(ws, message):
         pass
 
 def on_error(ws, error):
-    print(f"WS Error: {error}")
+    pass
 
 def on_close(ws, close_status_code, close_msg):
     print("WS Closed")
@@ -134,7 +135,8 @@ try:
     print(f"✅ CCXT ({EXCHANGE_ID}) initialized.")
 except Exception as e: 
     print(f"⚠️ Error initializing exchange. Error: {e}")
-    sys.exit(1)
+    # Continue execution, dashboard will handle data failures gracefully
+    pass
 
 try: locale.setlocale(locale.LC_ALL, 'en_IN.UTF-8')
 except: pass
@@ -158,29 +160,20 @@ def get_tradingview_html(symbol):
     tv_symbol = f"BINANCE:{symbol.replace('/', '')}"
     return f"""<!DOCTYPE html><html><head><style>body, html {{ margin: 0; padding: 0; height: 100%; overflow: hidden; background-color: #1e1e1e; }}</style></head><body><div class="tradingview-widget-container" style="height:100%;width:100%"><div id="tradingview_widget"></div><script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script><script type="text/javascript">new TradingView.widget({{"autosize": true, "symbol": "{tv_symbol}", "interval": "D", "timezone": "Asia/Kolkata", "theme": "dark", "style": "1", "locale": "en", "toolbar_bg": "#f1f3f6", "enable_publishing": false, "allow_symbol_change": true, "container_id": "tradingview_widget", "details": true, "hotlist": true, "calendar": true, "hide_side_toolbar": false}});</script></div></body></html>"""
 
-# --- DATA FETCHING (Fixed for Pandas Warning) ---
+# --- DATA FETCHING ---
 def fetch_chart_data(selected_symbol, timeframe, limit):
-    print(f"DIAG: Attempting to fetch OHLCV for {selected_symbol} ({timeframe}, limit={limit})...")
+    print(f"DIAG: Fetching OHLCV for {selected_symbol} ({limit})...")
     try:
         ohlcv = exchange.fetch_ohlcv(selected_symbol, timeframe, limit=limit)
-        
-        if not ohlcv:
-            print(f"DIAG: CCXT returned no data for {selected_symbol}.")
-            return None
-            
+        if not ohlcv: return None
         df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
         df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms').dt.tz_localize('UTC').dt.tz_convert('Asia/Kolkata')
-        
-        # FIX: Use .loc to avoid SettingWithCopyWarning
         for col in ['open', 'high', 'low', 'close']: 
             df.loc[:, col] = df[col] * USD_TO_INR_RATE
-        
-        print(f"DIAG: CCXT fetch successful. Rows: {len(df)}")
-        # Return as JSON string for caching
+        # Return JSON string to avoid SettingWithCopyWarning in future manipulations
         return df.to_json(date_format='iso', orient='split')
-        
     except Exception as e: 
-        print(f"CRITICAL ERROR: CCXT fetch failed for {selected_symbol}. Error: {e}")
+        print(f"ERROR: CCXT fetch failed: {e}")
         return None
 
 def fetch_market_data():
@@ -209,9 +202,7 @@ def fetch_market_data():
             history.append(price)
             
             data.append({'rank': i + 1, 'symbol': symbol, 'name': base_coin, 'price': price, 'mkt_cap': mkt_cap, 'volume': volume, 'change_24h': change_24h, 'change_7d': change_24h * 1.2, 'history': history})
-    except Exception as e: 
-        print(f"Market Data Error: {e}")
-        pass
+    except Exception as e: pass
     return data
 
 def calculate_advanced_metrics(df):
@@ -224,27 +215,29 @@ def calculate_advanced_metrics(df):
     df.loc[:, 'Puell'] = df['close'] / df['365DMA']
     current_puell = df['Puell'].iloc[-1]
     puell_meter_val = min(max((current_puell - 0.5) / (3.0 - 0.5) * 100, 0), 100)
-    
     delta = df['close'].diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
     rs = gain / loss
     df.loc[:, 'RSI'] = 100 - (100 / (1 + rs))
     current_rsi = df['RSI'].iloc[-1]
-    
     price_to_pi = df['close'].iloc[-1] / df['350DMA'].iloc[-1]
     top_score = (price_to_pi * 0.6 + (current_rsi/100) * 0.4) * 100
     top_score = min(top_score, 100)
-    
     return df, current_puell, puell_meter_val, top_score
 
 def generate_global_market_data():
-    btc_df = fetch_chart_data('BTC/USDT', '1d', 365)
-    if btc_df is None: return None
-    # Assuming btc_df is JSON due to fetch_chart_data change, need to handle if calling this directly
-    # Ideally, for this global data, we should allow fetching raw DF. 
-    # For now, let's just return dummy data to avoid crash if JSON string is returned
-    return None 
+    try:
+        ohlcv = exchange.fetch_ohlcv('BTC/USDT', '1d', limit=365)
+        if not ohlcv: return None
+        df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms').dt.tz_localize('UTC').dt.tz_convert('Asia/Kolkata')
+        for col in ['open', 'high', 'low', 'close']: df.loc[:, col] = df[col] * USD_TO_INR_RATE
+        btc_supply = 19_600_000
+        total_mkt_cap = df['close'] * btc_supply * 2.0 
+        total_volume = df['volume'] * 10000 * 5
+        return df['timestamp'], total_mkt_cap, total_volume
+    except: return None
 
 def generate_crypto_news():
     headlines = ["Bitcoin Surges Past Key Resistance", "Ethereum 2.0 Upgrade Details", "Solana Network Record Transactions", "Crypto Regulation New Bill", "Binance New Partnership", "XRP Ledger Activity Spikes", "Top 5 Altcoins to Watch", "Global Crypto Adoption Growth"]
@@ -262,29 +255,20 @@ def get_fake_content_cards():
     content = []
     for _ in range(2):
         content.append(html.Div(className='fake-card', children=[
-            html.Div("Market Analysis", style={'color':'#888', 'fontSize':'0.8rem'}),
-            html.H4("BTC Breaking Resistance?", style={'margin':'5px 0'}),
+            html.Div("Market Analysis", style={'color':'#888', 'fontSize':'0.7rem'}),
+            html.H5("BTC Breaking Resistance?", style={'margin':'5px 0', 'color':'white', 'fontSize':'0.9rem'}),
             html.Div(className='fake-chart')
         ]))
         content.append(html.Div(className='fake-card', children=[
-            html.Div("Live Rates", style={'color':'#888', 'fontSize':'0.8rem', 'marginBottom':'10px'}),
+            html.Div("Live Rates", style={'color':'#888', 'fontSize':'0.7rem', 'marginBottom':'8px'}),
             html.Div(className='fake-row', children=[
-                html.Div(className='fake-coin', children=[html.Div(className='fake-icon'), "BTC"]),
+                html.Div(className='fake-coin', children=[html.Div("B", className='fake-icon-txt', style={'background':'#F7931A'}), "BTC"]),
                 html.Span("$98,450", className='txt-green')
             ]),
-            html.Div(className='fake-row', children=[
-                html.Div(className='fake-coin', children=[html.Div(className='fake-icon'), "ETH"]),
-                html.Span("$3,890", className='txt-green')
-            ]),
-            html.Div(className='fake-row', children=[
-                html.Div(className='fake-coin', children=[html.Div(className='fake-icon'), "SOL"]),
+             html.Div(className='fake-row', children=[
+                html.Div(className='fake-coin', children=[html.Div("S", className='fake-icon-txt', style={'background':'#00FFA3', 'color':'black'}), "SOL"]),
                 html.Span("$145", className='txt-red')
             ])
-        ]))
-        content.append(html.Div(className='fake-card', children=[
-            html.Div("Latest News", style={'color':'#888', 'fontSize':'0.8rem', 'marginBottom':'5px'}),
-            html.Div(className='fake-news-img'),
-            html.H5("Crypto Adoption reaches all time high in Asia.", style={'margin':'0'})
         ]))
     return content
 
@@ -299,6 +283,11 @@ def get_welcome_layout():
              ])
         ]),
         html.Div(className='welcome-body', children=[
+            html.Div(className='hero-section', children=[
+                html.H1("Welcome To Our Company", className='hero-title'),
+                html.P("Explore the world of cryptocurrency market analysis, real-time data, and advanced trading indicators in one professional terminal.", className='hero-subtitle'),
+                html.Button("LOGIN", id='login-btn-main', className='login-btn-large')
+            ]),
             html.Div(className='mobile-mockup-wrapper', children=[
                 html.Div(className='mobile-frame', children=[
                     html.Div(className='mobile-notch'),
@@ -306,11 +295,6 @@ def get_welcome_layout():
                         html.Div(className='scroll-container', children=get_fake_content_cards())
                     ])
                 ])
-            ]),
-            html.Div(className='hero-section', children=[
-                html.H1("Welcome To Our Company", className='hero-title'),
-                html.P("Explore the world of cryptocurrency market analysis, real-time data, and advanced trading indicators in one professional terminal.", className='hero-subtitle'),
-                html.Button("LOGIN", id='login-btn-main', className='login-btn-large')
             ])
         ]),
         html.Div(id='modal-container')
@@ -329,150 +313,76 @@ app.index_string = '''
         <style>
             @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;900&display=swap');
             body { background-color: #121212; color: #e0e0e0; font-family: 'Poppins', sans-serif; margin: 0; padding: 0; }
+            .welcome-container { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: radial-gradient(circle at top right, #0a192f 0%, #020c1b 60%, #000000 100%); z-index: 2000; display: flex; flex-direction: column; color: white; overflow: hidden; }
+            .welcome-container::before { content: ""; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-image: linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px); background-size: 50px 50px; pointer-events: none; }
+            .welcome-nav { display: flex; justify-content: space-between; align-items: center; padding: 25px 60px; flex-shrink: 0; z-index: 2; }
+            .welcome-brand { font-size: 1.5rem; font-weight: 900; letter-spacing: 1px; color: white; }
+            .welcome-links button { background: transparent; border: none; color: #aaa; margin-left: 30px; padding: 5px 10px; cursor: pointer; font-weight: 600; font-size: 0.8rem; letter-spacing: 1px; transition: 0.3s; }
+            .welcome-links button:hover { color: #00CC96; }
+            .welcome-body { flex: 1; display: flex; align-items: center; justify-content: space-between; padding: 0 80px 50px 80px; gap: 80px; z-index: 2; }
+            .hero-section { flex: 1; max-width: 550px; }
+            .hero-title { font-size: 4rem; font-weight: 900; margin-bottom: 25px; line-height: 1.1; color: white; }
+            .hero-subtitle { font-size: 1.1rem; color: #8892b0; margin-bottom: 40px; line-height: 1.6; }
+            .login-btn-large { background: linear-gradient(90deg, #00CC96, #00a8ff); border: none; color: white; padding: 15px 50px; font-size: 1rem; font-weight: bold; border-radius: 30px; cursor: pointer; transition: transform 0.3s, box-shadow 0.3s; width: fit-content; box-shadow: 0 5px 20px rgba(0, 204, 150, 0.3); letter-spacing: 1px; }
+            .login-btn-large:hover { transform: translateY(-3px); box-shadow: 0 8px 25px rgba(0, 204, 150, 0.5); }
+            .mobile-mockup-wrapper { flex: 0 0 auto; display: flex; justify-content: center; align-items: center; height: 100%; perspective: 1000px; }
+            .mobile-frame { width: 280px; height: 580px; background: #050505; border-radius: 45px; border: 10px solid #1a1a1a; box-shadow: -20px 20px 60px rgba(0,0,0,0.7), 0 0 20px rgba(0, 204, 150, 0.2); position: relative; overflow: hidden; transform: rotateY(-10deg) rotateX(5deg); }
+            .mobile-notch { position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: 100px; height: 25px; background: #1a1a1a; border-bottom-left-radius: 18px; border-bottom-right-radius: 18px; z-index: 10; }
+            .mobile-screen { width: 100%; height: 100%; background: #0a0a0a; overflow: hidden; position: relative; padding-top: 40px; }
+            .scroll-container { display: flex; flex-direction: column; padding: 0 15px; animation: scrollUp 12s linear infinite; }
+            @keyframes scrollUp { 0% { transform: translateY(0); } 100% { transform: translateY(-33.33%); } }
+            .fake-card { background: #141414; border-radius: 16px; margin-bottom: 15px; padding: 15px; border: 1px solid #222; }
+            .fake-chart { height: 40px; background: linear-gradient(90deg, #141414, #00CC96, #141414); position: relative; overflow: hidden; border-radius: 8px; margin-top: 10px; opacity: 0.5; }
+            .fake-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 0.75rem; }
+            .fake-coin { display: flex; align-items: center; gap: 8px; color: white; font-weight: bold; }
+            .fake-icon-txt { width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.6rem; font-weight: 900; }
+            .txt-green { color: #00CC96; font-weight: bold; } .txt-red { color: #FF4136; font-weight: bold; }
             
-            /* WELCOME PAGE STYLES */
-            .welcome-container {
-                position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-                background: linear-gradient(135deg, #0a192f 0%, #112240 50%, #0056b3 100%);
-                z-index: 2000;
-                display: flex; flex-direction: column;
-                color: white; overflow: hidden;
-            }
-            .welcome-nav {
-                display: flex; justify-content: space-between; align-items: center;
-                padding: 20px 50px; flex-shrink: 0;
-            }
-            .welcome-brand { font-size: 1.5rem; font-weight: 900; letter-spacing: 1px; }
-            .welcome-links button { 
-                background: transparent; border: 1px solid rgba(255,255,255,0.3); color: white;
-                margin-left: 20px; padding: 8px 20px; cursor: pointer;
-                font-weight: 600; font-size: 0.9rem; letter-spacing: 0.5px;
-                border-radius: 20px; transition: 0.3s;
-            }
-            .welcome-links button:hover { background: rgba(255,255,255,0.1); border-color: #00CC96; color: #00CC96; }
-            
-            /* WELCOME SPLIT LAYOUT */
-            .welcome-body {
-                flex: 1; display: flex; align-items: center; justify-content: space-between;
-                padding: 0 80px; gap: 50px;
-            }
-            
-            .hero-section {
-                flex: 1; max-width: 600px;
-            }
-            .hero-title { font-size: 3.5rem; font-weight: 900; margin-bottom: 20px; line-height: 1.1; }
-            .hero-subtitle { font-size: 1.1rem; color: #a0c4ff; margin-bottom: 40px; line-height: 1.6; }
-            .login-btn-large {
-                background: linear-gradient(90deg, #00CC96, #007bff);
-                border: none; color: white; padding: 15px 40px;
-                font-size: 1.1rem; font-weight: bold; border-radius: 30px;
-                cursor: pointer; transition: transform 0.3s, box-shadow 0.3s; width: fit-content;
-                box-shadow: 0 5px 15px rgba(0, 204, 150, 0.4);
-            }
-            .login-btn-large:hover { transform: translateY(-3px); box-shadow: 0 8px 20px rgba(0, 204, 150, 0.6); }
-
-            /* MOBILE MOCKUP STYLES (NEW) */
-            .mobile-mockup-wrapper {
-                flex: 1; display: flex; justify-content: center; align-items: center;
-                height: 80%;
-            }
-            .mobile-frame {
-                width: 300px; height: 600px;
-                background: #000; border-radius: 40px;
-                border: 8px solid #333;
-                box-shadow: 0 20px 50px rgba(0,0,0,0.5);
-                position: relative; overflow: hidden;
-            }
-            .mobile-notch {
-                position: absolute; top: 0; left: 50%; transform: translateX(-50%);
-                width: 120px; height: 25px; background: #333;
-                border-bottom-left-radius: 15px; border-bottom-right-radius: 15px;
-                z-index: 10;
-            }
-            .mobile-screen {
-                width: 100%; height: 100%;
-                background: #121212;
-                overflow: hidden; /* Hide scrollbar */
-                position: relative;
-            }
-            
-            /* INFINITE SCROLL ANIMATION */
-            .scroll-container {
-                display: flex; flex-direction: column;
-                animation: scrollUp 15s linear infinite;
-            }
-            @keyframes scrollUp {
-                0% { transform: translateY(0); }
-                100% { transform: translateY(-50%); } /* Move half way up */
-            }
-            
-            /* FAKE CONTENT CARDS */
-            .fake-card {
-                background: #1e1e1e; border-radius: 12px;
-                margin: 15px; padding: 15px;
-                border: 1px solid #333;
-                box-shadow: 0 4px 10px rgba(0,0,0,0.2);
-            }
-            .fake-chart { height: 80px; background: linear-gradient(90deg, #1e1e1e, #2a2a2a, #1e1e1e); position: relative; overflow: hidden; border-radius: 8px; margin-top: 10px; }
-            .fake-chart::after {
-                content: ''; position: absolute; top: 50%; left: 0; width: 100%; height: 2px;
-                background: #00CC96; transform: rotate(-5deg);
-                box-shadow: 0 0 10px #00CC96;
-            }
-            .fake-row { display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 0.8rem; }
-            .fake-coin { display: flex; align-items: center; gap: 8px; }
-            .fake-icon { width: 20px; height: 20px; background: #555; border-radius: 50%; }
-            .txt-green { color: #00CC96; } .txt-red { color: #FF4136; }
-            .fake-news-img { width: 100%; height: 80px; background: #333; border-radius: 8px; margin-bottom: 8px; }
-            
-            /* MODAL STYLES */
+            /* --- MODAL STYLES (UPDATED) --- */
             .modal-overlay {
                 position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-                background: rgba(0,0,0,0.85); z-index: 3000;
+                background: rgba(0,0,0,0.85); z-index: 9999;
                 display: flex; justify-content: center; align-items: center;
-                animation: fadeIn 0.3s;
+                backdrop-filter: blur(8px); animation: fadeIn 0.3s;
             }
-            @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-            
             .modal-content {
-                background: #161a1e; padding: 40px; border-radius: 15px;
-                border: 1px solid #2a2e39; text-align: center;
-                position: relative; max-width: 400px; width: 90%;
-                box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+                background: #161a1e; padding: 40px; border-radius: 20px;
+                border: 1px solid #00CC96;
+                text-align: center; position: relative; max-width: 450px; width: 90%;
+                box-shadow: 0 0 50px rgba(0, 204, 150, 0.2);
+                color: #e0e0e0;
             }
             .modal-close {
-                position: absolute; top: 15px; right: 20px; font-size: 1.5rem; cursor: pointer; color: #888;
+                position: absolute; top: 15px; right: 20px; 
+                font-size: 2rem; font-weight: bold; cursor: pointer; color: #888; 
+                transition: 0.2s; line-height: 1; z-index: 10000;
             }
-            .modal-close:hover { color: white; }
-            .contact-info-box h3 { color: #00CC96; margin-bottom: 25px; }
-            .contact-item { margin-bottom: 15px; color: #eee; font-size: 1rem; }
-            .contact-link { color: #007bff; text-decoration: none; font-weight: bold; }
-
-            /* DASHBOARD NAVBAR STYLES */
-            .navbar {
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                background-color: #161a1e;
-                padding: 15px 30px;
-                border-bottom: 1px solid #2a2e39;
-                position: sticky;
-                top: 0;
-                z-index: 1000;
-                box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            .modal-close:hover { color: #FF4136; transform: scale(1.2); }
+            
+            .profile-pic {
+                width: 130px; height: 130px; border-radius: 50%; object-fit: cover;
+                border: 4px solid #00CC96; margin-bottom: 20px;
+                box-shadow: 0 0 25px rgba(0, 204, 150, 0.4);
             }
+            
+            .contact-info-box h3 { color: #fff; margin-bottom: 25px; font-size: 1.5rem; }
+            .contact-item { margin-bottom: 15px; color: #aaa; font-size: 0.95rem; display: flex; flex-direction: column; gap: 5px; }
+            .contact-label { font-weight: 600; color: #00CC96; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px; }
+            .contact-val { color: white; font-weight: 500; }
+            .contact-link { color: #00a8ff; text-decoration: none; font-weight: bold; transition: 0.2s; }
+            .contact-link:hover { color: #00CC96; text-decoration: underline; }
+            .about-text p { line-height: 1.6; margin-bottom: 15px; color: #ccc; }
+            
+            /* --- DASHBOARD STYLES --- */
+            .navbar { display: flex; justify-content: space-between; align-items: center; background-color: #161a1e; padding: 15px 30px; border-bottom: 1px solid #2a2e39; position: sticky; top: 0; z-index: 1000; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
             .nav-brand { font-size: 1.8rem; font-weight: 900; color: #F0B90B; display: flex; align-items: center; gap: 10px; letter-spacing: 1px; }
             .nav-controls { display: flex; align-items: center; gap: 15px; }
             .nav-label { color: #888; font-size: 0.9rem; }
-            
-            /* TABS & FOOTER */
             .custom-tabs-container { margin-top: 0; }
             .custom-tabs { border-bottom: 1px solid #333; background: #121212; }
             .custom-tab { background-color: #121212; color: #888; border: none; padding: 15px 25px; font-size: 1rem; cursor: pointer; border-bottom: 2px solid transparent; transition: 0.3s; }
             .custom-tab--selected { background-color: #121212; color: #F0B90B !important; border-bottom: 2px solid #F0B90B; font-weight: bold; }
             .app-footer { text-align: center; padding: 40px 20px; color: #555; font-size: 0.85rem; border-top: 1px solid #222; margin-top: 40px; background-color: #161a1e; }
-            
-            /* EXISTING COMPONENT STYLES */
             .control-bar-container { display: flex; justify-content: space-between; align-items: center; background-color: #1e1e1e; padding: 10px 20px; border-radius: 8px 8px 0 0; margin-top: 20px; border-bottom: 1px solid #333; }
             .btn-group { display: flex; background-color: #2a2a2a; border-radius: 6px; padding: 3px; gap: 2px; }
             .control-btn { background-color: transparent; border: none; color: #888; padding: 6px 15px; font-size: 0.9rem; cursor: pointer; border-radius: 4px; font-weight: bold; transition: 0.2s; }
@@ -568,8 +478,6 @@ app.index_string = '''
             .stat-card { background: #2a2e39; padding: 15px; border-radius: 8px; text-align: center; }
             .stat-label { color: #888; font-size: 0.9rem; }
             .stat-val { color: #fff; font-size: 1.1rem; font-weight: bold; margin-top: 5px; }
-            
-            /* UPCOMING TAB STYLES */
             .presale-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; padding: 20px; }
             .presale-card { background-color: #1e1e1e; border: 1px solid #333; border-radius: 12px; padding: 20px; position: relative; overflow: hidden; }
             .presale-badge { position: absolute; top: 15px; right: 15px; background: #246BFD; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.8rem; font-weight: bold; }
@@ -743,7 +651,7 @@ def update_ws_store(n):
     prevent_initial_call=True
 )
 def update_ticker_and_bar_chart(n):
-    print(f"DIAG: Running SLOW Ticker/Bar Chart update (Interval: {n})")
+    # print(f"DIAG: Running SLOW Ticker/Bar Chart update (Interval: {n})")
     ticker_data_all = {}
     fig_bar = go.Figure()
     
@@ -796,11 +704,11 @@ def manage_chart_data_cache(tf_data, selected_symbol, cache_data):
         
         # If LIVE mode, we only need the historical data once, then use cache
         if tf_data['tf'] == '1m' and cache_data['df_json'] is not None:
-            print("DIAG: Serving 1m chart data from cache.")
+            # print("DIAG: Serving 1m chart data from cache.")
             return cache_data # No need to refetch
         
         if tf_data['tf'] != '1m' and cache_data['df_json'] is not None:
-            print("DIAG: Serving historical chart data from cache.")
+            # print("DIAG: Serving historical chart data from cache.")
             return cache_data # No need to refetch
             
     # If parameters changed or cache is empty, FETCH NEW DATA (Slow Operation)
@@ -820,7 +728,8 @@ def manage_chart_data_cache(tf_data, selected_symbol, cache_data):
     [Output('live-candlestick-chart', 'figure'),
      Output('live-price-display', 'children'),
      Output('key-metrics-panel', 'children'),
-     Output('chart-title', 'children')],
+     Output('chart-title', 'children'),
+     Output('tradingview-iframe', 'srcDoc')],
     [Input('interval-component', 'n_intervals'),
      Input('coin-select-dropdown', 'value'),
      Input('timeframe-store', 'data'),
@@ -831,16 +740,17 @@ def manage_chart_data_cache(tf_data, selected_symbol, cache_data):
 def update_overview_fast(n, selected_symbol, tf_data, ws_data, ticker_data, cache_data):
     
     # print(f"DIAG: Running FAST Chart Update (Interval: {n}). Cache status: {cache_data['df_json'] is not None}")
+    tv_html = get_tradingview_html(selected_symbol)
     
     if not selected_symbol or cache_data['df_json'] is None: 
-        return go.Figure(), "Loading...", "Loading Metrics", "Loading Chart"
+        return go.Figure(), "Loading...", "Loading Metrics", "Loading Chart", tv_html
         
     # Load DataFrame from cached JSON
     try:
-        df = pd.read_json(cache_data['df_json'], orient='split')
+        df = pd.read_json(StringIO(cache_data['df_json']), orient='split')
         df['timestamp'] = pd.to_datetime(df['timestamp'], utc=True).dt.tz_convert('Asia/Kolkata')
     except:
-        return go.Figure(), "N/A", "Data Error", "Chart Error"
+        return go.Figure(), "N/A", "Data Error", "Chart Error", tv_html
 
     # --- 1. GET LIVE PRICE ---
     latest_price = ws_data.get(selected_symbol, df['close'].iloc[-1])
@@ -865,8 +775,26 @@ def update_overview_fast(n, selected_symbol, tf_data, ws_data, ticker_data, cach
     fdv = latest_price * supply['max'] / USD_TO_INR_RATE if supply['max'] else market_cap
 
     metrics_html = [
-        # ... (Metrics HTML generation using latest_price and current_ticker) ...
-        html.Div(className='market-cap-card', children=[html.Div("Market Cap ⓘ", className='metric-title'), html.Div(format_compact(market_cap), className='metric-value-large'), html.Div(f"{pct_change:+.2f}%", style={'color': color, 'fontSize': '0.9rem', 'marginTop': '5px'})]), html.Div(className='metric-grid', children=[html.Div(className='metric-box', children=[html.Div("Volume (24h)", className='metric-title'), html.Div(format_compact(volume), className='metric-value')]), html.Div(className='metric-box', children=[html.Div("FDV", className='metric-title'), html.Div(format_compact(fdv), className='metric-value')]), html.Div(className='metric-box', children=[html.Div("Vol/Mkt Cap", className='metric-title'), html.Div(f"{(volume/market_cap*100):.2f}%" if market_cap > 0 else "N/A", className='metric-value')]), html.Div(className='metric-box', children=[html.Div("Total Supply", className='metric-title'), html.Div(f"{format_compact(supply['supply']).replace('₹ ', '')} {supply['symbol']}", className='metric-value')]), html.Div(className='metric-box', children=[html.Div("Max Supply", className='metric-title'), html.Div(f"{format_compact(supply['max']).replace('₹ ', '')} {supply['symbol']}" if supply['max'] else "∞", className='metric-value')]), html.Div(className='metric-box', children=[html.Div("Circulating", className='metric-title'), html.Div(f"{format_compact(supply['supply']).replace('₹ ', '')}", className='metric-value')]),]), html.Div(className='market-cap-card', style={'marginTop': '15px', 'padding': '10px'}, children=[html.Div(style={'display': 'flex', 'justifyContent': 'space-between'}, children=[html.Span("Profile Score", style={'color': '#888'}), html.Span("100%", style={'color': '#00CC96', 'fontWeight': 'bold'})]), html.Div(className='score-bar', children=[html.Div(className='score-fill')])])]
+        html.Div(className='market-cap-card', children=[
+            html.Div("Market Cap ⓘ", className='metric-title'),
+            html.Div(format_compact(market_cap), className='metric-value-large'),
+            html.Div(f"{pct_change:+.2f}%", style={'color': color, 'fontSize': '0.9rem', 'marginTop': '5px'})
+        ]),
+        html.Div(className='metric-grid', children=[
+            html.Div(className='metric-box', children=[html.Div("Volume (24h)", className='metric-title'), html.Div(format_compact(volume), className='metric-value')]),
+            html.Div(className='metric-box', children=[html.Div("FDV", className='metric-title'), html.Div(format_compact(fdv), className='metric-value')]),
+            html.Div(className='metric-box', children=[html.Div("Vol/Mkt Cap", className='metric-title'), html.Div(f"{(volume/market_cap*100):.2f}%" if market_cap > 0 else "N/A", className='metric-value')]),
+            html.Div(className='metric-box', children=[html.Div("Total Supply", className='metric-title'), html.Div(f"{format_compact(supply['supply']).replace('₹ ', '')} {supply['symbol']}", className='metric-value')]),
+            html.Div(className='metric-box', children=[html.Div("Max Supply", className='metric-title'), html.Div(f"{format_compact(supply['max']).replace('₹ ', '')} {supply['symbol']}" if supply['max'] else "∞", className='metric-value')]),
+            html.Div(className='metric-box', children=[html.Div("Circulating", className='metric-title'), html.Div(f"{format_compact(supply['supply']).replace('₹ ', '')}", className='metric-value')])
+        ]),
+        html.Div(className='market-cap-card', style={'marginTop': '15px', 'padding': '10px'}, children=[
+            html.Div(style={'display': 'flex', 'justifyContent': 'space-between'}, children=[
+                html.Span("Profile Score", style={'color': '#888'}),
+                html.Span("100%", style={'color': '#00CC96', 'fontWeight': 'bold'})
+            ]),
+            html.Div(className='score-bar', children=[html.Div(className='score-fill')])
+        ])
     ]
     
     # 5. RENDER CHART
@@ -878,10 +806,200 @@ def update_overview_fast(n, selected_symbol, tf_data, ws_data, ticker_data, cach
     price_html = html.Span(f"Live Price: {format_currency(latest_price)}", style={'color': color})
     
     title_suffix = "LIVE VIEW (Last 50 Mins)" if tf_data['tf'] == '1m' else "Past 24 Hours"
-    return fig_candle, price_html, metrics_html, f"{full_name} Analysis - {title_suffix}"
+    return fig_candle, price_html, metrics_html, f"{full_name} Analysis - {title_suffix}", tv_html
 
-# (Remaining callbacks like update_controls, update_market_trending_news_dex, etc., remain the same)
-# NOTE: You will need to add the Ticker Store input to your other slow callbacks (like market table, analytics, etc.) as well to use the cached ticker data.
+@app.callback(
+    Output('page-content', 'children'),
+    Output('login-state-store', 'data'),
+    Input('login-btn-main', 'n_clicks'),
+    State('login-state-store', 'data'),
+    prevent_initial_call=True
+)
+def login_success(n_clicks, current_state):
+    if n_clicks and n_clicks > 0:
+        return get_dashboard_layout(), True
+    return dash.no_update, dash.no_update
+
+# --- MODAL CALLBACKS (FIXED & UPDATED) ---
+@app.callback(
+    Output('modal-container', 'children'),
+    [Input('about-link-btn', 'n_clicks'), 
+     Input('contact-link-btn', 'n_clicks'),
+     Input({'type': 'close-modal', 'index': 0}, 'n_clicks')], # Pattern matching input for dynamic close button
+    prevent_initial_call=True
+)
+def manage_modal(about_click, contact_click, close_click):
+    ctx_id = ctx.triggered_id
+    
+    # अगर क्लिक बाहर से आया है या क्लोज बटन दबाया गया है
+    if not ctx_id or (isinstance(ctx_id, dict) and ctx_id['type'] == 'close-modal'):
+        return None
+
+    content = None
+    
+    # 1. ABOUT PAGE CONTENT
+    if ctx_id == 'about-link-btn':
+        content = html.Div(className='about-text', children=[
+            html.H2("About Crypto Master", style={'color': '#00CC96', 'marginBottom': '20px'}),
+            html.P("Crypto Master Terminal is a professional-grade platform designed for real-time cryptocurrency market analysis.", style={'fontSize': '1.1rem'}),
+            html.P("Our mission is to empower traders with institutional-level data, live charting, and advanced indicators.", style={'color': '#aaa'}),
+            html.Div("Developed by Raghav Ahir Yaduvanshi", style={'marginTop': '20px', 'fontSize': '0.9rem', 'color': '#00CC96'})
+        ])
+
+    # 2. CONTACT PAGE CONTENT (With Your Details)
+    elif ctx_id == 'contact-link-btn':
+        # आपकी फोटो का URL (GitHub raw link)
+        photo_url = 'https://raw.githubusercontent.com/rahir19/host-image/main/raghav_pic.jpeg' 
+        
+        content = html.Div(className='contact-info-box', children=[
+            # Profile Picture in Circle
+            html.Img(src=photo_url, className='profile-pic'),
+            
+            # Name
+            html.H3("Raghav Ahir Yaduvanshi", style={'color': 'white', 'marginBottom': '5px'}),
+            html.Div("Full Stack Developer", style={'color': '#00CC96', 'fontSize': '0.9rem', 'marginBottom': '20px'}),
+            
+            # Mobile Number
+            html.Div(className='contact-item', children=[
+                html.Span("📞 Mobile:", className='contact-label', style={'color': '#00CC96', 'marginRight': '10px'}),
+                html.Span("+91 6266649445", className='contact-val')
+            ]),
+            
+            # LinkedIn
+            html.Div(className='contact-item', children=[
+                 html.Span("🔗 LinkedIn:", className='contact-label', style={'color': '#00CC96', 'marginRight': '10px'}),
+                 html.A("View Profile", href="https://www.linkedin.com/in/raghav-ahir-117b8b357/", target="_blank", className='contact-link')
+            ]),
+            
+            # GitHub
+            html.Div(className='contact-item', children=[
+                 html.Span("💻 GitHub:", className='contact-label', style={'color': '#00CC96', 'marginRight': '10px'}),
+                 html.A("rahir19", href="https://github.com/rahir19", target="_blank", className='contact-link')
+             ]),
+        ])
+
+    # Show Modal with Close Button (X)
+    if content:
+        return html.Div(className='modal-overlay', children=[
+            html.Div(className='modal-content', children=[
+                 # Close Button with Pattern Matching ID
+                 html.Span("×", id={'type': 'close-modal', 'index': 0}, className='modal-close'),
+                 content
+            ])
+        ])
+    return None
+
+@app.callback(
+    [Output('timeframe-store', 'data'),
+     Output({'type': 'tf-btn', 'index': ALL}, 'className'),
+     Output('interval-component', 'interval', allow_duplicate=True)],
+    [Input({'type': 'tf-btn', 'index': ALL}, 'n_clicks')],
+    [State('timeframe-store', 'data')],
+    prevent_initial_call=True
+)
+def update_controls(n_clicks, current_tf_data):
+    ctx_msg = ctx.triggered_id
+    tf_data = current_tf_data
+    interval_speed = 60000 
+    
+    if ctx_msg and ctx_msg['type'] == 'tf-btn':
+        selected_tf = ctx_msg['index']
+        if selected_tf == 'LIVE': tf_data = {'tf': '1m', 'limit': 50}; interval_speed = 500
+        elif selected_tf == '24H': tf_data = {'tf': '15m', 'limit': 96}; interval_speed = 60000
+        elif selected_tf == '7D': tf_data = {'tf': '1h', 'limit': 168}; interval_speed = 60000
+        elif selected_tf == '1M': tf_data = {'tf': '4h', 'limit': 180}; interval_speed = 60000
+        elif selected_tf == '1Y': tf_data = {'tf': '1d', 'limit': 365}; interval_speed = 60000
+        elif selected_tf == '5Y': tf_data = {'tf': '1w', 'limit': 260}; interval_speed = 60000
+
+    active_tf_label = 'LIVE'
+    if tf_data['limit'] == 96: active_tf_label = '24H'
+    elif tf_data['limit'] == 168: active_tf_label = '7D'
+    elif tf_data['limit'] == 180: active_tf_label = '1M'
+    elif tf_data['limit'] == 365: active_tf_label = '1Y'
+    elif tf_data['limit'] == 260: active_tf_label = '5Y'
+    
+    styles = ['control-btn live-btn active' if i['id']['index'] == 'LIVE' and active_tf_label == 'LIVE' else ('control-btn active' if i['id']['index'] == active_tf_label else ('control-btn live-btn' if i['id']['index'] == 'LIVE' else 'control-btn')) for i in ctx.inputs_list[0]]
+    
+    return tf_data, styles, interval_speed
+
+# --- MISSING CALLBACKS ADDED BELOW ---
+
+@app.callback(
+    [Output('global-mkt-cap', 'children'), Output('global-mkt-change', 'children'), Output('global-mkt-chart', 'figure'), Output('global-vol-chart', 'figure'), Output('cex-dominance-chart', 'figure'), Output('hist-1d', 'children'), Output('hist-7d', 'children'), Output('hist-30d', 'children'), Output('hist-1y', 'children'), Output('year-high', 'children'), Output('year-low', 'children')],
+    Input('market-interval', 'n_intervals')
+)
+def update_spot_market(n):
+    data = generate_global_market_data()
+    if not data: return "Loading...", "", go.Figure(), go.Figure(), go.Figure(), "-", "-", "-", "-", "-", "-"
+    times, mkt_caps, volumes = data; current_cap = mkt_caps.iloc[-1]; prev_cap = mkt_caps.iloc[-2]; change = ((current_cap - prev_cap) / prev_cap) * 100; color = '#00CC96' if change >= 0 else '#FF4136'
+    fig_cap = go.Figure(go.Scatter(x=times, y=mkt_caps, mode='lines', fill='tozeroy', line=dict(color='#00CC96', width=2), fillcolor='rgba(0, 204, 150, 0.1)')); fig_cap.update_layout(template='plotly_dark', paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', margin=dict(l=30, r=10, t=10, b=30), height=300)
+    fig_vol = go.Figure(go.Scatter(x=times, y=volumes, mode='lines', line=dict(color='#00CC96', width=2))); fig_vol.update_layout(template='plotly_dark', paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', margin=dict(l=30, r=10, t=10, b=30), height=300)
+    x_vals = times[-90:]; y_binance = np.random.normal(50, 2, 90); y_coinbase = np.random.normal(15, 1, 90); y_dex = np.random.normal(20, 3, 90); y_others = 100 - (y_binance + y_coinbase + y_dex)
+    fig_dom = go.Figure(); fig_dom.add_trace(go.Scatter(x=x_vals, y=y_binance, stackgroup='one', name='Binance', line=dict(width=0))); fig_dom.add_trace(go.Scatter(x=x_vals, y=y_coinbase, stackgroup='one', name='Coinbase', line=dict(width=0))); fig_dom.add_trace(go.Scatter(x=x_vals, y=y_dex, stackgroup='one', name='DEXs', line=dict(width=0))); fig_dom.add_trace(go.Scatter(x=x_vals, y=y_others, stackgroup='one', name='Others', line=dict(width=0))); fig_dom.update_layout(template='plotly_dark', paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', margin=dict(l=30, r=10, t=10, b=30), height=300)
+    return format_compact(current_cap), html.Span(f"{change:+.2f}% (24h)", style={'color': color}), fig_cap, fig_vol, fig_dom, format_compact(mkt_caps.iloc[-2]), format_compact(mkt_caps.iloc[-8]), format_compact(mkt_caps.iloc[-31]), format_compact(mkt_caps.iloc[0]), format_compact(mkt_caps.max()), format_compact(mkt_caps.min())
+
+@app.callback([Output('pi-cycle-chart', 'figure'), Output('rainbow-chart', 'figure'), Output('puell-chart', 'figure'), Output('puell-val-text', 'children'), Output('puell-knob', 'style'), Output('top-val-text', 'children'), Output('top-knob', 'style'), Output('val-indicator', 'style'), Output('val-score', 'children'), Output('cycle-status-text', 'children'), Output('cycle-desc', 'children')], [Input('market-interval', 'n_intervals'), Input('analysis-coin-dropdown', 'value')])
+def update_analytics(n, selected_symbol):
+    if not selected_symbol: return go.Figure(), go.Figure(), go.Figure(), "", {}, "", {}, {}, "", "", ""
+    df_json = fetch_chart_data(selected_symbol, '1d', 1000) # Reduced limit to 1000 to avoid timeouts
+    if not df_json: return go.Figure(), go.Figure(), go.Figure(), "N/A", {}, "N/A", {}, {}, "N/A", "No Data", "Select BTC/ETH"
+    
+    df = pd.read_json(StringIO(df_json), orient='split')
+    # Reconvert timestamp after JSON serialization
+    # FIX: Check if already tz-aware before localizing
+    if df['timestamp'].dt.tz is None:
+        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms').dt.tz_localize('UTC').dt.tz_convert('Asia/Kolkata')
+    else:
+        df['timestamp'] = df['timestamp'].dt.tz_convert('Asia/Kolkata')
+
+    df, current_puell, puell_meter_val, top_score = calculate_advanced_metrics(df)
+    
+    fig_pi = go.Figure(); fig_pi.add_trace(go.Scatter(x=df['timestamp'], y=df['close'], mode='lines', name='Price', line=dict(color='white', width=1))); fig_pi.add_trace(go.Scatter(x=df['timestamp'], y=df['111DMA'], mode='lines', name='111 DMA', line=dict(color='#00CC96', width=2))); fig_pi.add_trace(go.Scatter(x=df['timestamp'], y=df['350DMA'], mode='lines', name='350 DMA x2', line=dict(color='#FF4136', width=2))); fig_pi.update_layout(template='plotly_dark', paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=300, margin=dict(l=30, r=10, t=30, b=30), legend=dict(orientation="h", y=1.1))
+    fig_rain = go.Figure(); base = df['Rainbow_Base']; colors = ['purple', 'blue', 'green', 'yellow', 'orange', 'red']; multipliers = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75]
+    for i, mult in enumerate(multipliers): fig_rain.add_trace(go.Scatter(x=df['timestamp'], y=base*mult, mode='lines', line=dict(width=0), showlegend=False, fill='tonexty' if i>0 else 'none', fillcolor=colors[i]))
+    fig_rain.add_trace(go.Scatter(x=df['timestamp'], y=df['close'], mode='lines', name='Price', line=dict(color='white', width=2))); fig_rain.update_layout(template='plotly_dark', paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=300, margin=dict(l=30, r=10, t=30, b=30), showlegend=False, yaxis_type="log")
+    fig_puell = go.Figure(); fig_puell.add_hrect(y0=4, y1=10, fillcolor="rgba(255, 65, 54, 0.2)", line_width=0); fig_puell.add_hrect(y0=0, y1=0.5, fillcolor="rgba(0, 204, 150, 0.2)", line_width=0); fig_puell.add_trace(go.Scatter(x=df['timestamp'], y=df['Puell'], mode='lines', name='Puell Multiple', line=dict(color='#246BFD', width=2))); fig_puell.update_layout(template='plotly_dark', paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=300, margin=dict(l=30, r=10, t=30, b=30), yaxis_title="Multiple")
+    dma_200 = df['close'].rolling(window=200).mean().iloc[-1]; val_score = 50
+    if dma_200 > 0: val_score = min(max((df['close'].iloc[-1] / dma_200 - 0.5) / 1.9 * 100, 0), 100)
+    status = "Top Heavy (Sell)" if val_score > 80 else ("Bottom (Buy)" if val_score < 20 else "Neutral")
+    desc = "Market is overheated." if val_score > 80 else ("Market is in accumulation zone." if val_score < 20 else "Market is currently in a neutral zone.")
+    return fig_pi, fig_rain, fig_puell, f"{current_puell:.2f}", {'left': f'{puell_meter_val}%'}, f"{top_score:.1f}%", {'left': f'{top_score}%'}, {'left': f'{val_score}%'}, f"{val_score:.0f}/100", status, desc
+
+@app.callback([Output('markets-table-content', 'children'), Output('trending-content', 'children'), Output('news-content', 'children'), Output('dexscan-content', 'children'), Output('current-page-store', 'data', allow_duplicate=True), Output('page-display', 'children'), Output('prev-btn', 'disabled'), Output('next-btn', 'disabled')], [Input('market-interval', 'n_intervals'), Input('prev-btn', 'n_clicks'), Input('next-btn', 'n_clicks')], [State('current-page-store', 'data')], prevent_initial_call=True)
+def update_market_trending_news_dex(n, prev_clicks, next_clicks, current_page):
+    market_data = fetch_market_data()
+    ctx_id = ctx.triggered_id
+    if ctx_id == 'prev-btn' and current_page > 1: current_page -= 1
+    if ctx_id == 'next-btn' and current_page < 10: current_page += 1
+    if not market_data: return html.Div("Loading..."), html.Div("Loading..."), html.Div("Loading..."), html.Div("Loading..."), current_page, f"Page {current_page} of 10", True, True
+    dex_cards = []
+    for cat, coins in DEX_CATEGORIES.items():
+        rows = []
+        for i, sym in enumerate(coins):
+            try:
+                coin_data = next((c for c in market_data if c['symbol'] == sym), None)
+                if not coin_data: continue
+                vol = coin_data['volume'] * random.uniform(0.1, 0.5); fdv = coin_data['mkt_cap'] * random.uniform(0.8, 1.2); price = coin_data['price']; change = coin_data['change_24h']
+                rows.append(html.Div(className='dex-row', children=[html.Div(className='dex-col-left', children=[html.Div(f"{i+1}", className='dex-rank'), html.Img(src=get_icon_url(sym), className='dex-icon'), html.Div(coin_data['name'], className='dex-name')]), html.Div(className='dex-col-mid', children=[html.Div(f"Vol {format_compact(vol)}"), html.Div(f"FDV {format_compact(fdv)}")]), html.Div(className='dex-col-right', children=[html.Div(format_currency(price), className='dex-price'), html.Div(f"{change:.2f}%", className='dex-change-down' if change >=0 else 'dex-change-up')])]))
+            except: continue
+        if rows: dex_cards.append(html.Div(className='dex-card', children=[html.Div(className='dex-header', children=[html.Span(cat), html.Span(">", style={'color': '#666', 'fontSize': '0.9rem'})]), html.Div(rows)]))
+    start_idx = (current_page - 1) * 10; end_idx = start_idx + 10; page_data = market_data[start_idx:end_idx]
+    header = html.Tr([html.Th("#"), html.Th("Asset"), html.Th("Price"), html.Th("Market Cap"), html.Th("24h Volume"), html.Th("24h %"), html.Th("7d %"), html.Th("Last 7 Days")])
+    rows = []
+    for coin in page_data:
+        col24 = 'positive' if coin['change_24h'] >= 0 else 'negative'; col7d = 'positive' if coin['change_7d'] >= 0 else 'negative'; spark_color = '#00CC96' if coin['change_7d'] >= 0 else '#FF4136'
+        fig_spark = go.Figure(go.Scatter(y=coin['history'], mode='lines', line=dict(color=spark_color, width=2), fill='tozeroy', fillcolor=f"rgba({int(spark_color[1:3],16)}, {int(spark_color[3:5],16)}, {int(spark_color[5:7],16)}, 0.1)")); fig_spark.update_layout(template='plotly_dark', height=40, width=120, margin=dict(l=0, r=0, t=0, b=0), xaxis=dict(visible=False), yaxis=dict(visible=False), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+        row = html.Tr([html.Td(coin['rank']), html.Td(html.Div(className='coin-cell', children=[html.Img(src=get_icon_url(coin['symbol']), className='coin-icon'), html.Div([html.Div(coin['name'], style={'fontWeight': 'bold'}), html.Div(format_currency(coin['price']), className='trend-price')])])), html.Td(format_currency(coin['price']), style={'fontWeight': 'bold'}), html.Td(format_compact(coin['mkt_cap'])), html.Td(format_compact(coin['volume'])), html.Td(f"{coin['change_24h']:.2f}%", className=col24), html.Td(f"{coin['change_7d']:.2f}%", className=col7d), html.Td(dcc.Graph(figure=fig_spark, config={'staticPlot': True}), className='sparkline-cell')]); rows.append(row)
+    table = html.Table([html.Thead(header), html.Tbody(rows)], className='crypto-table')
+    gainers = sorted(market_data, key=lambda x: x['change_24h'], reverse=True)[:5]; losers = sorted(market_data, key=lambda x: x['change_24h'])[:5]
+    def create_trend_list(items):
+        rows = []
+        for i, coin in enumerate(items): rows.append(html.Div(className='trending-row', children=[html.Div(className='coin-cell', children=[html.Div(f"{i+1}", className='rank-badge'), html.Img(src=get_icon_url(coin['symbol']), className='coin-icon'), html.Div([html.Div(coin['name'], style={'fontWeight': 'bold'}), html.Div(format_currency(coin['price']), className='trend-price')])]), html.Div(f"{coin['change_24h']:.2f}%", className=f"trend-pct {'bg-green' if coin['change_24h']>=0 else 'bg-red'}")]))
+        return rows
+    trending_html = [html.Div(className='trending-card', children=[html.Div("🔥 Top Gainers", className='trending-header', style={'color': '#00CC96'}), html.Div(create_trend_list(gainers))]), html.Div(className='trending-card', children=[html.Div("📉 Top Losers", className='trending-header', style={'color': '#FF4136'}), html.Div(create_trend_list(losers))])]
+    news_items = generate_crypto_news(); news_cards = []
+    for news in news_items: card = html.Div(className='news-card', children=[html.Img(src=news['image'], className='news-img'), html.Div(className='news-content', children=[html.Span(news['source'], className='news-tag'), html.Div(news['title'], className='news-title'), html.P(news['desc'], style={'color':'#aaa', 'fontSize':'0.9rem'}), html.Div(children=[html.Span(news['time']), html.A("Read More", href="#", style={'color':'#00CC96', 'textDecoration':'none'})], className='news-meta')])]); news_cards.append(card)
+    return table, trending_html, news_cards, dex_cards, current_page, f"Page {current_page} of 10", (current_page == 1), (current_page == 10)
 
 # --- RUN ---
 server = app.server 
