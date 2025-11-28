@@ -59,7 +59,7 @@ COIN_PARAMS = {
 
 DEX_CATEGORIES = {
     'BSC 🟡': ['BNB/USDT', 'ADA/USDT', 'XRP/USDT'],
-    'Solana 🟣': ['SOL/USDT', 'AVAX/USDT', 'TRX/USDT'],
+    'Solana 🟣': ['SOL/USDT', 'AVAX/USUSDT', 'TRX/USDT'],
     'Meme 🐶': ['DOGE/USDT', 'SHIB/USDT', 'BTC/USDT'],
     'AI 🤖': ['ETH/USDT', 'BNB/USDT', 'SOL/USDT'],
     'PerpDEX 📈': ['BTC/USDT', 'ETH/USDT', 'XRP/USDT']
@@ -85,11 +85,11 @@ USD_TO_INR_RATE = 84.00
 
 # --- GLOBAL LIVE DATA STORE (Updated by WebSocket Thread) ---
 LATEST_WS_PRICES = {symbol: 0.0 for symbol in SYMBOL_MAP.keys()}
-LATEST_WS_PRICES[DEFAULT_SYMBOL] = 70000 * USD_TO_INR_RATE # Initial dummy price
+LATEST_WS_PRICES[DEFAULT_SYMBOL] = 70000 * USD_TO_INR_RATE 
 
 # --- WEBSOCKET IMPLEMENTATION ---
 BINANCE_WS_BASE_URL = "wss://stream.binance.com:9443/ws/"
-WS_STREAMS = "/".join([f"{s.lower().replace('/', '')}@trade" for s in ['BTCUSDT', 'ETHUSDT', 'SOLUSDT']]) # Subscribe to multiple streams
+WS_STREAMS = "/".join([f"{s.lower().replace('/', '')}@trade" for s in ['BTCUSDT', 'ETHUSDT', 'SOLUSDT']]) 
 BINANCE_WS_URL = f"{BINANCE_WS_BASE_URL}{WS_STREAMS}"
 
 def on_message(ws, message):
@@ -106,11 +106,11 @@ def on_message(ws, message):
                 price = float(trade_data['p'])
                 LATEST_WS_PRICES[symbol_ccxt] = price * USD_TO_INR_RATE
     except Exception as e:
+        # print(f"WS Message Process Error: {e}") # Enable if needed
         pass
 
 def on_error(ws, error):
-    # print(f"WS Error: {error}") # Keep error logs for debug if needed
-    pass
+    print(f"WS Error: {error}")
 
 def on_close(ws, close_status_code, close_msg):
     print("WS Closed")
@@ -136,8 +136,8 @@ try:
     exchange = getattr(ccxt, EXCHANGE_ID)({'options': {'verify': False}})
     exchange.load_markets()
     print(f"✅ CCXT ({EXCHANGE_ID}) initialized.")
-except: 
-    print("⚠️ Error initializing exchange. Check connection.")
+except Exception as e: 
+    print(f"⚠️ Error initializing exchange. Error: {e}")
     sys.exit(1)
 
 try: locale.setlocale(locale.LC_ALL, 'en_IN.UTF-8')
@@ -175,22 +175,34 @@ def generate_crypto_news():
 
 # --- DATA FETCHING (REST API for OHLCV/Historical) ---
 def fetch_chart_data(selected_symbol, timeframe, limit):
+    print(f"DIAG: Attempting to fetch OHLCV for {selected_symbol} ({timeframe}, limit={limit})...")
     try:
         ohlcv = exchange.fetch_ohlcv(selected_symbol, timeframe, limit=limit)
+        
+        if not ohlcv:
+            print(f"DIAG: CCXT returned no data for {selected_symbol}.")
+            return None
+            
         df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
         df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms').dt.tz_localize('UTC').dt.tz_convert('Asia/Kolkata')
         
-        # FIX: Use .loc for column assignment to avoid SettingWithCopyWarning
         for col in ['open', 'high', 'low', 'close']: 
             df.loc[:, col] = df[col] * USD_TO_INR_RATE
-            
+        
+        print(f"DIAG: CCXT fetch successful. Rows: {len(df)}")
         return df
-    except: return None
+        
+    except Exception as e: 
+        print(f"CRITICAL ERROR: CCXT fetch failed for {selected_symbol}. Error: {e}")
+        return None
 
 def fetch_market_data():
     data = []
+    print("DIAG: Attempting to fetch market tickers...")
     try:
         tickers = exchange.fetch_tickers()
+        print(f"DIAG: Fetched {len(tickers)} tickers.")
+        
         all_pairs = [s for s in tickers.keys() if s.endswith('/USDT')]
         top_pairs = sorted(all_pairs, key=lambda x: tickers[x]['quoteVolume'], reverse=True)[:100]
         
@@ -199,7 +211,6 @@ def fetch_market_data():
             base_coin = symbol.split('/')[0]
             
             price_usd = t['last']
-            # Use WS price if available, fallback to REST API last price * INR
             price = LATEST_WS_PRICES.get(symbol, price_usd * USD_TO_INR_RATE)
             
             volume = t['quoteVolume'] * USD_TO_INR_RATE
@@ -217,7 +228,7 @@ def fetch_market_data():
             
             data.append({'rank': i + 1, 'symbol': symbol, 'name': base_coin, 'price': price, 'mkt_cap': mkt_cap, 'volume': volume, 'change_24h': change_24h, 'change_7d': change_24h * 1.2, 'history': history})
     except Exception as e: 
-        print(f"Market Data Error: {e}")
+        print(f"CRITICAL ERROR: Market Data Ticker Fetch failed. Error: {e}")
         pass
     return data
 
@@ -254,6 +265,8 @@ def generate_global_market_data():
     return btc_df['timestamp'], total_mkt_cap, total_volume
 
 # --- DASHBOARD APP ---
+# NOTE: If you save this file as 'app.py', use app:server in Procfile.
+# If you save it as 'crypto_terminal.py', use crypto_terminal:server in Procfile.
 app = Dash(__name__, title="Crypto Master Terminal", suppress_callback_exceptions=True)
 
 app.index_string = '''
@@ -826,27 +839,41 @@ def update_controls(n_clicks, current_tf_data):
      Input('ws-data-store', 'data')]
 )
 def update_overview(n, selected_symbol, tf_data, ws_data):
-    if not selected_symbol: return dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
+    
+    print(f"DIAG: Running update_overview (Interval: {n}) for {selected_symbol}")
+    
+    if not selected_symbol: 
+        print("DIAG: No symbol selected.")
+        return dash.no_update, dash.no_update, dash.no_update, go.Figure(), "Select Coin", ""
+        
     tv_html = get_tradingview_html(selected_symbol)
     
+    # 1. GET LIVE PRICE
     latest_price = ws_data.get(selected_symbol, 0.0)
     
+    # 2. GET HISTORICAL DATA (CCXT)
     df = fetch_chart_data(selected_symbol, tf_data['tf'], tf_data['limit'])
     
-    if df is None or df.empty: return go.Figure(), "Loading...", "Loading...", go.Figure(), "Loading...", tv_html
+    if df is None or df.empty: 
+        print("DIAG: Chart data is missing or empty. Displaying empty chart.")
+        return go.Figure(), "N/A", "Data Unavailable", go.Figure(), f"{selected_symbol} - Data Error", tv_html
     
-    if latest_price == 0.0:
+    # 3. CONSOLIDATE PRICE (Use WS price if available and not 0.0)
+    if latest_price == 0.0 or latest_price < 1000: # Using 1000 INR as proxy for "uninitialized" price
         latest_price = df['close'].iloc[-1]
-    
+        print(f"DIAG: Using CCXT Close Price ({latest_price:.2f}) as WS fallback.")
+    else:
+        print(f"DIAG: Using LIVE WebSocket Price: {latest_price:.2f}")
+
+    # 4. FIX CHART FOR LIVE VIEW
     ticker_data = {}
     try: ticker = exchange.fetch_ticker(selected_symbol); ticker_data = {'last': ticker['last'], 'percentage': ticker['percentage'], 'quoteVolume': ticker['quoteVolume']}
     except: pass 
     
-    # --- FIX: Use .loc to update DataFrame safely and avoid SettingWithCopyWarning ---
+    # Use .loc to update DataFrame safely and avoid SettingWithCopyWarning
     if tf_data['tf'] == '1m':
         last_index = df.index[-1]
         df.loc[last_index, 'close'] = latest_price 
-    # ----------------------------------------------------------------------------------
         
     pct_change = ticker_data.get('percentage', 0)
     volume = ticker_data.get('quoteVolume', 0) * USD_TO_INR_RATE
@@ -857,11 +884,12 @@ def update_overview(n, selected_symbol, tf_data, ws_data):
     market_cap = latest_price * supply['supply'] / USD_TO_INR_RATE
     fdv = latest_price * supply['max'] / USD_TO_INR_RATE if supply['max'] else market_cap
 
+    # METRICS HTML
     metrics_html = [html.Div(className='market-cap-card', children=[html.Div("Market Cap ⓘ", className='metric-title'), html.Div(format_compact(market_cap), className='metric-value-large'), html.Div(f"{pct_change:+.2f}%", style={'color': color, 'fontSize': '0.9rem', 'marginTop': '5px'})]), html.Div(className='metric-grid', children=[html.Div(className='metric-box', children=[html.Div("Volume (24h)", className='metric-title'), html.Div(format_compact(volume), className='metric-value')]), html.Div(className='metric-box', children=[html.Div("FDV", className='metric-title'), html.Div(format_compact(fdv), className='metric-value')]), html.Div(className='metric-box', children=[html.Div("Vol/Mkt Cap", className='metric-title'), html.Div(f"{(volume/market_cap*100):.2f}%" if market_cap > 0 else "N/A", className='metric-value')]), html.Div(className='metric-box', children=[html.Div("Total Supply", className='metric-title'), html.Div(f"{format_compact(supply['supply']).replace('₹ ', '')} {supply['symbol']}", className='metric-value')]), html.Div(className='metric-box', children=[html.Div("Max Supply", className='metric-title'), html.Div(f"{format_compact(supply['max']).replace('₹ ', '')} {supply['symbol']}" if supply['max'] else "∞", className='metric-value')]), html.Div(className='metric-box', children=[html.Div("Circulating", className='metric-title'), html.Div(f"{format_compact(supply['supply']).replace('₹ ', '')}", className='metric-value')]),]), html.Div(className='market-cap-card', style={'marginTop': '15px', 'padding': '10px'}, children=[html.Div(style={'display': 'flex', 'justifyContent': 'space-between'}, children=[html.Span("Profile Score", style={'color': '#888'}), html.Span("100%", style={'color': '#00CC96', 'fontWeight': 'bold'})]), html.Div(className='score-bar', children=[html.Div(className='score-fill')])])]
     
+    # CANDLESTICK CHART
     fig_candle = go.Figure(go.Candlestick(x=df['timestamp'], open=df['open'], high=df['high'], low=df['low'], close=df['close'], increasing_line_color='#00CC96', decreasing_line_color='#FF4136', name='Price'))
     
-    # FIX: Use .loc for column assignment in calculate_advanced_metrics (or ensure it returns a copy)
     df.loc[:, 'SMA'] = df['close'].rolling(5).mean() 
     
     fig_candle.add_trace(go.Scatter(x=df['timestamp'], y=df['SMA'], line=dict(color='white', width=1), name='SMA (Trend)'))
@@ -869,6 +897,8 @@ def update_overview(n, selected_symbol, tf_data, ws_data):
     
     price_html = html.Span(f"Live Price: {format_currency(latest_price)}", style={'color': color})
     
+    # BAR CHART
+    fig_bar = go.Figure() # Placeholder/Default
     try:
         all_tickers = exchange.fetch_tickers(TRACKER_SYMBOLS)
         bar_x, bar_y, bar_colors = [], [], []
@@ -879,8 +909,9 @@ def update_overview(n, selected_symbol, tf_data, ws_data):
         if bar_x: zipped = sorted(zip(bar_x, bar_y, bar_colors), key=lambda x: x[1], reverse=True); bar_x, bar_y, bar_colors = zip(*zipped)
         fig_bar = go.Figure(go.Bar(x=bar_x, y=bar_y, marker_color=bar_colors, text=[f"{y:.2f}%" for y in bar_y], textposition='auto'))
         fig_bar.update_layout(template='plotly_dark', paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', margin=dict(l=20, r=20, t=20, b=20), yaxis=dict(title='24h Change %', showgrid=True, gridcolor='#333'), xaxis=dict(showgrid=False))
-    except: fig_bar = go.Figure()
-    
+    except Exception as e:
+        print(f"ERROR: Bar Chart Tickers failed: {e}")
+        
     title_suffix = "LIVE VIEW (Last 50 Mins)" if tf_data['tf'] == '1m' else "Past 24 Hours"
     return fig_candle, price_html, metrics_html, fig_bar, f"{full_name} Analysis - {title_suffix}", tv_html
 
