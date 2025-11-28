@@ -2,4 +2,5 @@ dash
 pandas
 plotly
 ccxt
-gunicorn
+websocket-client
+numpy
