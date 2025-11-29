@@ -3,6 +3,5 @@ pandas
 plotly
 ccxt
 websocket-client
-numpy
-gunicorn    
-werkzeug     
+requests
+gunicorn
