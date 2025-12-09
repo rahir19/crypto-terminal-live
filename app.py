@@ -77,25 +77,35 @@ try:
 except:
     pass
 
+
 def format_currency(value):
     try:
         return locale.currency(value, symbol='₹', grouping=True)
     except:
         return f'₹ {value:,.2f}'
 
+
 def format_compact(value):
-    if value >= 1_000_000_000_000: return f"₹{value/1_000_000_000_000:.2f}T"
-    if value >= 1_000_000_000: return f"₹{value/1_000_000_000:.2f}B"
-    if value >= 1_000_000: return f"₹{value/1_000_000:.2f}M"
+    if value is None:
+        return "-"
+    if value >= 1_000_000_000_000:
+        return f"₹{value/1_000_000_000_000:.2f}T"
+    if value >= 1_000_000_000:
+        return f"₹{value/1_000_000_000:.2f}B"
+    if value >= 1_000_000:
+        return f"₹{value/1_000_000:.2f}M"
     return f"₹{value:,.0f}"
+
 
 def get_icon_url(symbol):
     base = symbol.split('/')[0].lower()
     return f"https://www.cryptocompare.com/media/37746251/{base}.png"
 
+
 def get_tradingview_html(symbol):
     tv_symbol = f"BINANCE:{symbol.replace('/', '')}"
     return f"""<!DOCTYPE html><html><head><style>body, html {{ margin: 0; padding: 0; height: 100%; overflow: hidden; background-color: #0b0e11; }}</style></head><body><div class="tradingview-widget-container" style="height:100%;width:100%"><div id="tradingview_widget"></div><script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script><script type="text/javascript">new TradingView.widget({{"autosize": true, "symbol": "{tv_symbol}", "interval": "D", "timezone": "Asia/Kolkata", "theme": "dark", "style": "1", "locale": "en", "toolbar_bg": "#f1f3f6", "enable_publishing": false, "allow_symbol_change": true, "container_id": "tradingview_widget", "details": true, "hotlist": true, "calendar": true, "hide_side_toolbar": false, "backgroundColor": "rgba(11, 14, 17, 1)"}});</script></div></body></html>"""
+
 
 def generate_crypto_news():
     headlines = [
@@ -127,6 +137,7 @@ def generate_crypto_news():
         news_items.append(item)
     return news_items
 
+
 def fetch_chart_data(selected_symbol, timeframe, limit):
     if exchange is None:
         base_price = 5000000 if 'BTC' in selected_symbol else (250000 if 'ETH' in selected_symbol else 10000)
@@ -146,6 +157,7 @@ def fetch_chart_data(selected_symbol, timeframe, limit):
         df = pd.DataFrame(data, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
         df['timestamp'] = pd.to_datetime(df['timestamp']).dt.tz_localize('UTC').dt.tz_convert('Asia/Kolkata')
         return df
+
     try:
         ohlcv = exchange.fetch_ohlcv(selected_symbol, timeframe, limit=limit)
         df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
@@ -155,6 +167,7 @@ def fetch_chart_data(selected_symbol, timeframe, limit):
         return df
     except:
         return None
+
 
 def fetch_market_data():
     data = []
@@ -184,6 +197,7 @@ def fetch_market_data():
                 'history': history
             })
         return data
+
     try:
         tickers = exchange.fetch_tickers()
         all_pairs = [s for s in tickers.keys() if s.endswith('/USDT')]
@@ -218,15 +232,18 @@ def fetch_market_data():
         pass
     return data
 
+
 def calculate_cycle_indicators(df):
     if df is None or len(df) < 20:
         return None, 0, 0, 0
+
     df['111DMA'] = df['close'].rolling(window=min(111, len(df)//2)).mean()
     df['350DMA'] = df['close'].rolling(window=min(350, len(df))).mean() * 2
     df['log_price'] = np.log(df['close'])
     df['Rainbow_Base'] = df['close'].rolling(window=min(100, len(df)//2)).mean()
     df['365DMA'] = df['close'].rolling(window=min(365, len(df))).mean()
     df['Puell'] = df['close'] / df['365DMA'].replace(0, np.nan)
+
     current_puell = df['Puell'].iloc[-1] if not pd.isna(df['Puell'].iloc[-1]) else 1.0
     puell_meter_val = min(max((current_puell - 0.5) / (3.0 - 0.5) * 100, 0), 100)
 
@@ -241,7 +258,9 @@ def calculate_cycle_indicators(df):
     price_to_pi = df['close'].iloc[-1] / pi_denom
     top_score = (price_to_pi * 0.6 + (current_rsi/100) * 0.4) * 100
     top_score = min(top_score, 100)
+
     return df, current_puell, puell_meter_val, top_score
+
 
 def generate_global_market_data():
     btc_df = fetch_chart_data('BTC/USDT', '1d', 365)
@@ -252,6 +271,7 @@ def generate_global_market_data():
     total_mkt_cap = btc_df['close'] * btc_supply * 2.0
     total_volume = btc_df['volume'] * 10000 * 5
     return btc_df['timestamp'], total_mkt_cap, total_volume
+
 
 # --- APP INITIALIZATION ---
 app = Dash(__name__, title="Crypto Master", suppress_callback_exceptions=True)
@@ -306,6 +326,7 @@ app.index_string = '''
             .contact-item { display: flex; align-items: center; margin: 20px 0; padding: 10px; background: rgba(255,255,255,0.03); border-radius: 8px; color: white; text-decoration: none; transition: 0.2s; }
             .contact-item:hover { background: rgba(255,255,255,0.08); }
             .contact-icon { font-size: 1.5rem; margin-right: 15px; width: 30px; text-align: center; color: var(--accent-gold); }
+            .contact-photo { width: 60px; height: 60px; border-radius: 50%; object-fit: cover; margin-right: 15px; box-shadow: 0 0 10px rgba(0,0,0,0.4); }
             .close-modal { position: absolute; top: 10px; right: 15px; background: none; border: none; color: #666; font-size: 1.5rem; cursor: pointer; }
             ::-webkit-scrollbar { width: 8px; height: 8px; }
             ::-webkit-scrollbar-track { background: var(--bg-color); }
@@ -385,779 +406,936 @@ app.index_string = '''
 '''
 
 # --- LAYOUTS ---
-login_layout = html.Div(className='login-container', children=[
-    html.Div(className='login-nav', children=[
-        html.Div("CRYPTO MASTER", className='nav-brand'),
-        html.Div(className='nav-links', children=[
-            html.Button("ABOUT", id='about-btn'),
-            html.Button("CONTACT", id='contact-btn')
-        ])
-    ]),
-    html.Div(className='login-box', children=[
-        html.H1("Welcome To Our Company", className='login-title'),
-        html.P(
-            "Explore the world of cryptocurrency market analysis, real-time data, and advanced trading indicators in one professional terminal. Secure. Fast. Reliable.",
-            className='login-desc'
-        ),
-        dcc.Input(id='username-box', type='text', placeholder='Username (raghav)', className='login-input'),
-        dcc.Input(id='password-box', type='password', placeholder='Password (1234)', className='login-input'),
-        html.Div(id='login-error', style={'color': '#FF4136', 'marginBottom': '10px', 'fontSize': '0.9rem'}),
-        html.Button("LOGIN", id='login-button', className='login-btn-main')
-    ]),
-    html.Div(id='about-modal', className='modal-overlay', children=[
-        html.Div(className='modal-content', children=[
-            html.Button("×", id='close-about', className='close-modal'),
-            html.H2("About Crypto Master", style={'color': '#fff', 'marginBottom': '15px'}),
-            html.P(
-                "Crypto Master is a state-of-the-art dashboard built with Python and Dash. It simulates real-time crypto exchanges, provides technical analysis tools like Puell Multiple and Pi Cycle Top, and tracks upcoming presales.",
-                style={'color': '#ccc', 'lineHeight': '1.6'}
-            ),
-        ])
-    ]),
-    html.Div(id='contact-modal', className='modal-overlay', children=[
-        html.Div(className='modal-content', children=[
-            html.Button("×", id='close-contact', className='close-modal'),
-            html.H2("Contact Me", style={'color': '#fff', 'marginBottom': '25px'}),
-
-            # Profile photo + name
-            html.Div(className='contact-item', children=[
-                html.Img(
-                    src="https://i.ibb.co/7ykpbqM/user.png",  # replace with your own image URL if you have one
-                    style={
-                        'width': '50px',
-                        'height': '50px',
-                        'borderRadius': '50%',
-                        'marginRight': '15px',
-                        'objectFit': 'cover'
-                    }
-                ),
-                html.Span(
-                    "Raghav Ahir Yaduvanshi",
-                    style={'fontSize': '1.1rem', 'fontWeight': 'bold'}
+login_layout = html.Div(
+    className='login-container',
+    children=[
+        html.Div(
+            className='login-nav',
+            children=[
+                html.Div("CRYPTO MASTER", className='nav-brand'),
+                html.Div(
+                    className='nav-links',
+                    children=[
+                        html.Button("ABOUT", id='about-btn'),
+                        html.Button("CONTACT", id='contact-btn')
+                    ]
                 )
-            ]),
+            ]
+        ),
+        html.Div(
+            className='login-box',
+            children=[
+                html.H1("Welcome To Our Company", className='login-title'),
+                html.P(
+                    "Explore the world of cryptocurrency market analysis, real-time data, and advanced trading indicators in one professional terminal. Secure. Fast. Reliable.",
+                    className='login-desc'
+                ),
+                dcc.Input(
+                    id='username-box',
+                    type='text',
+                    placeholder='Username (raghav)',
+                    className='login-input'
+                ),
+                dcc.Input(
+                    id='password-box',
+                    type='password',
+                    placeholder='Password (1234)',
+                    className='login-input'
+                ),
+                html.Div(
+                    id='login-error',
+                    style={'color': '#FF4136', 'marginBottom': '10px', 'fontSize': '0.9rem'}
+                ),
+                html.Button("LOGIN", id='login-button', className='login-btn-main')
+            ]
+        ),
+        html.Div(
+            id='about-modal',
+            className='modal-overlay',
+            children=[
+                html.Div(
+                    className='modal-content',
+                    children=[
+                        html.Button("×", id='close-about', className='close-modal'),
+                        html.H2("About Crypto Master", style={'color': '#fff', 'marginBottom': '15px'}),
+                        html.P(
+                            "Crypto Master is a state-of-the-art dashboard built with Python and Dash. It simulates real-time crypto exchanges, provides technical analysis tools like Puell Multiple and Pi Cycle Top, and tracks upcoming presales.",
+                            style={'color': '#ccc', 'lineHeight': '1.6'}
+                        ),
+                    ]
+                )
+            ]
+        ),
+        html.Div(
+            id='contact-modal',
+            className='modal-overlay',
+            children=[
+                html.Div(
+                    className='modal-content',
+                    children=[
+                        html.Button("×", id='close-contact', className='close-modal'),
+                        html.H2("Contact Me", style={'color': '#fff', 'marginBottom': '25px'}),
 
-            # Phone
-            html.Div(className='contact-item', children=[
-                html.I(className="fas fa-phone contact-icon"),
-                html.Span("6266649445")
-            ]),
+                        # PROFILE PHOTO + NAME
+                        html.Div(
+                            className='contact-item',
+                            children=[
+                                # NOTE: Is URL ko aap apne LinkedIn/GitHub photo se replace kar sakte ho
+                                html.Img(
+                                    src="https://via.placeholder.com/80",
+                                    className='contact-photo'
+                                ),
+                                html.Span(
+                                    "Raghav Ahir Yaduvanshi",
+                                    style={'fontSize': '1.1rem', 'fontWeight': 'bold'}
+                                )
+                            ]
+                        ),
 
-            # Email clickable (opens email app)
-            html.A(
-                href="mailto:raghavahir371@gmail.com",
-                target="_blank",
-                className='contact-item',
-                children=[
-                    html.I(className="fas fa-envelope contact-icon"),
-                    html.Span("raghavahir371@gmail.com")
-                ]
-            ),
+                        # PHONE
+                        html.Div(
+                            className='contact-item',
+                            children=[
+                                html.I(className="fas fa-phone contact-icon"),
+                                html.Span("6266649445")
+                            ]
+                        ),
 
-            # LinkedIn
-            html.A(
-                href="https://www.linkedin.com/in/raghav-ahir-117b8b357/",
-                target="_blank",
-                className='contact-item',
-                children=[
-                    html.I(className="fab fa-linkedin contact-icon"),
-                    html.Span("LinkedIn Profile")
-                ]
-            ),
+                        # EMAIL (CLICKABLE)
+                        html.A(
+                            href="mailto:raghavahir371@gmail.com",
+                            target="_blank",
+                            className='contact-item',
+                            children=[
+                                html.I(className="fas fa-envelope contact-icon"),
+                                html.Span("raghavahir371@gmail.com")
+                            ]
+                        ),
 
-            # GitHub
-            html.A(
-                href="https://github.com/rahir19",
-                target="_blank",
-                className='contact-item',
-                children=[
-                    html.I(className="fab fa-github contact-icon"),
-                    html.Span("GitHub Profile")
-                ]
-            ),
-        ])
-    ])
-])
+                        # LINKEDIN
+                        html.A(
+                            href="https://www.linkedin.com/in/raghav-ahir-117b8b357/",
+                            target="_blank",
+                            className='contact-item',
+                            children=[
+                                html.I(className="fab fa-linkedin contact-icon"),
+                                html.Span("LinkedIn Profile")
+                            ]
+                        ),
+
+                        # GITHUB
+                        html.A(
+                            href="https://github.com/rahir19",
+                            target="_blank",
+                            className='contact-item',
+                            children=[
+                                html.I(className="fab fa-github contact-icon"),
+                                html.Span("GitHub Profile")
+                            ]
+                        ),
+                    ]
+                )
+            ]
+        )
+    ]
+)
 
 dashboard_layout = html.Div([
     dcc.Store(id='timeframe-store', data={'tf': '1m', 'limit': 50}),
     dcc.Store(id='current-page-store', data=1),
 
-    # HEADER WITH REFRESH + LOGOUT BUTTONS
-    html.Div([
-        html.Div("⚡CRYPTO MASTER", className='header-title', style={'flex': '1'}),
-        html.Div([
-            html.Button("Refresh", id="refresh-btn", className="page-btn", style={'marginRight': '10px'}),
-            html.Button("Logout", id="logout-btn", className="page-btn")
-        ], style={'position': 'absolute', 'top': '25px', 'right': '25px'})
-    ], style={'position': 'relative'}),
+    # HEADER
+    html.Div("⚡CRYPTO MASTER", className='header-title'),
 
-    # hidden div for refresh callback
-    html.Div(id='refresh-dummy', style={'display': 'none'}),
-
-    dcc.Tabs(parent_className='custom-tabs', className='custom-tabs-container', children=[
-        dcc.Tab(label='Overview', className='custom-tab', selected_className='custom-tab--selected', children=[
-            html.Div(className='control-panel', children=[
-                html.P("SELECT ASSET", style={
-                    'marginBottom': '8px', 'color': '#888',
-                    'fontSize': '0.75rem', 'letterSpacing': '1px'
-                }),
-                dcc.Dropdown(
-                    id='coin-select-dropdown',
-                    options=DROPDOWN_OPTIONS,
-                    value=DEFAULT_SYMBOL,
-                    clearable=False,
-                    style={'color': '#000'}
-                )
-            ]),
-            html.H2(id='live-price-display', className='live-price-big'),
-            html.Div(className='flex-container', children=[
-                html.Div(className='chart-wrapper', children=[
-                    html.Div(className='control-bar-container', children=[
-                        html.Div(className='btn-group', children=[
-                            html.Button("Price", className='control-btn active'),
-                            html.Button("Market Cap", className='control-btn'),
-                            html.Button("TradingView", className='control-btn')
-                        ]),
-                        html.Div(className='btn-group', children=[
-                            html.Button("LIVE", id={'type': 'tf-btn', 'index': 'LIVE'},
-                                        className='control-btn live-btn active'),
-                            html.Button("24H", id={'type': 'tf-btn', 'index': '24H'}, className='control-btn'),
-                            html.Button("7D", id={'type': 'tf-btn', 'index': '7D'}, className='control-btn'),
-                            html.Button("1M", id={'type': 'tf-btn', 'index': '1M'}, className='control-btn'),
-                            html.Button("1Y", id={'type': 'tf-btn', 'index': '1Y'}, className='control-btn'),
-                            html.Button("5Y", id={'type': 'tf-btn', 'index': '5Y'}, className='control-btn')
-                        ])
-                    ]),
-                    html.Div(style={'padding': '20px'}, children=[
-                        html.H3(
-                            id='chart-title',
-                            style={
-                                'borderBottom': '1px solid #333',
-                                'paddingBottom': '15px',
-                                'marginTop': '0',
-                                'fontSize': '1.1rem',
-                                'color': '#fff'
-                            }
-                        ),
-                        dcc.Graph(id='live-candlestick-chart', style={'height': '480px'})
-                    ])
-                ]),
-                html.Div(className='metrics-container', children=[
-                    html.Div(id='key-metrics-panel')
-                ]),
-            ]),
-            html.Div(
-                className='bottom-bar-chart',
-                style={'margin': '24px'},
-                children=[
-                    html.H4(
-                        "MARKET PERFORMANCE (24H)",
-                        style={'color': '#888', 'marginBottom': '15px', 'letterSpacing': '1px'}
-                    ),
-                    dcc.Graph(id='bar-chart-24h', style={'height': '300px'})
-                ]
+    # REFRESH + LOGOUT BUTTON BAR
+    html.Div(
+        style={'display': 'flex', 'justifyContent': 'flex-end', 'gap': '10px', 'padding': '0 24px 10px 24px'},
+        children=[
+            html.Button("Refresh", id='refresh-button', className='page-btn'),
+            html.Button(
+                "Logout",
+                id='logout-button',
+                className='page-btn',
+                style={'background': '#FF4136', 'color': '#fff'}
             )
-        ]),
-        dcc.Tab(label='Technical Analysis', className='custom-tab', selected_className='custom-tab--selected', children=[
-            html.Div(
-                className='control-panel',
-                style={'marginTop': '20px'},
+        ]
+    ),
+
+    dcc.Tabs(
+        parent_className='custom-tabs',
+        className='custom-tabs-container',
+        children=[
+            dcc.Tab(
+                label='Overview',
+                className='custom-tab',
+                selected_className='custom-tab--selected',
                 children=[
-                    html.P(
-                        "SELECT ASSET FOR ANALYSIS",
-                        style={'marginBottom': '8px', 'color': '#888', 'fontSize': '0.75rem'}
+                    html.Div(
+                        className='control-panel',
+                        children=[
+                            html.P(
+                                "SELECT ASSET",
+                                style={
+                                    'marginBottom': '8px',
+                                    'color': '#888',
+                                    'fontSize': '0.75rem',
+                                    'letterSpacing': '1px'
+                                }
+                            ),
+                            dcc.Dropdown(
+                                id='coin-select-dropdown',
+                                options=DROPDOWN_OPTIONS,
+                                value=DEFAULT_SYMBOL,
+                                clearable=False,
+                                style={'color': '#000'}
+                            )
+                        ]
                     ),
-                    dcc.Dropdown(
-                        id='analysis-coin-dropdown',
-                        options=DROPDOWN_OPTIONS,
-                        value=DEFAULT_SYMBOL,
-                        clearable=False,
-                        style={'color': '#000'}
+                    html.H2(id='live-price-display', className='live-price-big'),
+                    html.Div(
+                        className='flex-container',
+                        children=[
+                            html.Div(
+                                className='chart-wrapper',
+                                children=[
+                                    html.Div(
+                                        className='control-bar-container',
+                                        children=[
+                                            html.Div(
+                                                className='btn-group',
+                                                children=[
+                                                    html.Button("Price", className='control-btn active'),
+                                                    html.Button("Market Cap", className='control-btn'),
+                                                    html.Button("TradingView", className='control-btn')
+                                                ]
+                                            ),
+                                            html.Div(
+                                                className='btn-group',
+                                                children=[
+                                                    html.Button(
+                                                        "LIVE",
+                                                        id={'type': 'tf-btn', 'index': 'LIVE'},
+                                                        className='control-btn live-btn active'
+                                                    ),
+                                                    html.Button(
+                                                        "24H",
+                                                        id={'type': 'tf-btn', 'index': '24H'},
+                                                        className='control-btn'
+                                                    ),
+                                                    html.Button(
+                                                        "7D",
+                                                        id={'type': 'tf-btn', 'index': '7D'},
+                                                        className='control-btn'
+                                                    ),
+                                                    html.Button(
+                                                        "1M",
+                                                        id={'type': 'tf-btn', 'index': '1M'},
+                                                        className='control-btn'
+                                                    ),
+                                                    html.Button(
+                                                        "1Y",
+                                                        id={'type': 'tf-btn', 'index': '1Y'},
+                                                        className='control-btn'
+                                                    ),
+                                                    html.Button(
+                                                        "5Y",
+                                                        id={'type': 'tf-btn', 'index': '5Y'},
+                                                        className='control-btn'
+                                                    )
+                                                ]
+                                            )
+                                        ]
+                                    ),
+                                    html.Div(
+                                        style={'padding': '20px'},
+                                        children=[
+                                            html.H3(
+                                                id='chart-title',
+                                                style={
+                                                    'borderBottom': '1px solid #333',
+                                                    'paddingBottom': '15px',
+                                                    'marginTop': '0',
+                                                    'fontSize': '1.1rem',
+                                                    'color': '#fff'
+                                                }
+                                            ),
+                                            dcc.Graph(id='live-candlestick-chart', style={'height': '480px'})
+                                        ]
+                                    )
+                                ]
+                            ),
+                            html.Div(
+                                className='metrics-container',
+                                children=[
+                                    html.Div(id='key-metrics-panel')
+                                ]
+                            ),
+                        ]
+                    ),
+                    html.Div(
+                        className='bottom-bar-chart',
+                        style={'margin': '24px'},
+                        children=[
+                            html.H4(
+                                "MARKET PERFORMANCE (24H)",
+                                style={
+                                    'color': '#888',
+                                    'marginBottom': '15px',
+                                    'letterSpacing': '1px'
+                                }
+                            ),
+                            dcc.Graph(id='bar-chart-24h', style={'height': '300px'})
+                        ]
                     )
                 ]
             ),
-            html.Div(className='analytics-grid', children=[
-                html.Div([
-                    html.Div(
-                        className='analytics-card',
-                        style={'marginBottom': '20px', 'padding': '20px'},
-                        children=[
-                            html.Div(
-                                [
-                                    html.Span("Pi Cycle Top Indicator"),
-                                    html.Span(
-                                        "111DMA vs 350DMA x2",
-                                        style={'color': '#888', 'fontSize': '0.8rem'}
-                                    )
-                                ],
-                                className='card-title',
-                                style={
-                                    'display': 'flex',
-                                    'justifyContent': 'space-between',
-                                    'marginBottom': '15px',
-                                    'fontWeight': 'bold'
-                                }
-                            ),
-                            dcc.Graph(id='pi-cycle-chart', style={'height': '320px'})
-                        ]
-                    ),
-                    html.Div(
-                        className='analytics-card',
-                        style={'marginBottom': '20px', 'padding': '20px'},
-                        children=[
-                            html.Div(
-                                [
-                                    html.Span("Rainbow Price Chart"),
-                                    html.Span(
-                                        "Long Term Trend",
-                                        style={'color': '#888', 'fontSize': '0.8rem'}
-                                    )
-                                ],
-                                className='card-title',
-                                style={
-                                    'display': 'flex',
-                                    'justifyContent': 'space-between',
-                                    'marginBottom': '15px',
-                                    'fontWeight': 'bold'
-                                }
-                            ),
-                            dcc.Graph(id='rainbow-chart', style={'height': '320px'})
-                        ]
-                    ),
-                    html.Div(
-                        className='analytics-card',
-                        style={'padding': '20px'},
-                        children=[
-                            html.Div(
-                                [
-                                    html.Span("Puell Multiple Chart"),
-                                    html.Span(
-                                        "Buy/Sell Zones",
-                                        style={'color': '#888', 'fontSize': '0.8rem'}
-                                    )
-                                ],
-                                className='card-title',
-                                style={
-                                    'display': 'flex',
-                                    'justifyContent': 'space-between',
-                                    'marginBottom': '15px',
-                                    'fontWeight': 'bold'
-                                }
-                            ),
-                            dcc.Graph(id='puell-chart', style={'height': '320px'})
-                        ]
-                    )
-                ]),
-                html.Div([
-                    html.Div(
-                        className='analytics-card',
-                        style={'marginBottom': '20px', 'padding': '25px', 'textAlign': 'center'},
-                        children=[
-                            html.Div("PUELL MULTIPLE STATUS", style={'color': '#888', 'fontSize': '0.8rem'}),
-                            html.Div(
-                                id='puell-val-text',
-                                className='big-stat',
-                                style={
-                                    'fontSize': '2.5rem',
-                                    'fontWeight': 'bold',
-                                    'margin': '10px 0'
-                                }
-                            ),
-                            html.Div(
-                                className='meter-bar-container',
-                                children=[
-                                    html.Div(className='meter-bar-puell'),
-                                    html.Div(id='puell-knob', className='meter-knob')
-                                ]
-                            ),
-                            html.Div(
-                                className='meter-labels',
-                                style={
-                                    'display': 'flex',
-                                    'justifyContent': 'space-between',
-                                    'color': '#888',
-                                    'fontSize': '0.8rem'
-                                },
-                                children=[html.Span("Undervalued"), html.Span("Overvalued")]
-                            )
-                        ]
-                    ),
-                    html.Div(
-                        className='analytics-card',
-                        style={'marginBottom': '20px', 'padding': '25px', 'textAlign': 'center'},
-                        children=[
-                            html.Div("CYCLE TOP INDICATOR", style={'color': '#888', 'fontSize': '0.8rem'}),
-                            html.Div(
-                                id='top-val-text',
-                                className='big-stat',
-                                style={
-                                    'fontSize': '2.5rem',
-                                    'fontWeight': 'bold',
-                                    'margin': '10px 0'
-                                }
-                            ),
-                            html.Div(
-                                className='meter-bar-container',
-                                children=[
-                                    html.Div(className='meter-bar-top'),
-                                    html.Div(id='top-knob', className='meter-knob')
-                                ]
-                            ),
-                            html.Div(
-                                className='meter-labels',
-                                style={
-                                    'display': 'flex',
-                                    'justifyContent': 'space-between',
-                                    'color': '#888',
-                                    'fontSize': '0.8rem'
-                                },
-                                children=[html.Span("Hold"), html.Span("Sell")]
-                            )
-                        ]
-                    ),
-                    html.Div(
-                        className='analytics-card',
-                        style={'textAlign': 'center', 'padding': '25px'},
-                        children=[
-                            html.Div("MARKET REGIME", style={'color': '#888', 'fontSize': '0.8rem'}),
-                            html.H2(
-                                id='cycle-status-text',
-                                style={'color': '#fff', 'margin': '15px 0', 'fontSize': '1.8rem'}
-                            ),
-                            html.Div(
-                                id='cycle-desc',
-                                style={'color': '#888', 'fontSize': '0.9rem', 'lineHeight': '1.5'}
-                            )
-                        ]
-                    ),
-                ])
-            ])
-        ]),
-        dcc.Tab(label='RWA Assets', className='custom-tab', selected_className='custom-tab--selected', children=[
-            html.Div(className='rwa-grid', children=[
-                html.Div(
-                    className='rwa-card',
-                    children=[
-                        html.Div(
-                            [
-                                html.H3(
-                                    "Total Tokenized Market Cap",
-                                    style={'color': '#aaa', 'fontSize': '0.9rem'}
-                                ),
-                                html.Div([
-                                    html.Span(
-                                        "$16.24B",
-                                        style={'fontSize': '2.2rem', 'fontWeight': 'bold'}
-                                    ),
-                                    html.Span(
-                                        " +1.12%",
-                                        style={
-                                            'color': '#FF4136',
-                                            'fontSize': '1rem',
-                                            'marginLeft': '10px'
-                                        }
-                                    )
-                                ])
-                            ],
-                            style={
-                                'paddingBottom': '15px',
-                                'borderBottom': '1px solid #333',
-                                'marginBottom': '15px'
-                            }
-                        ),
-                        dcc.Graph(id='rwa-mkt-chart', style={'height': '220px'})
-                    ]
-                ),
-                html.Div(
-                    className='rwa-card',
-                    children=[
-                        html.H4(
-                            "TOP ISSUERS",
-                            style={
-                                'color': '#fff',
-                                'textAlign': 'center',
-                                'marginBottom': '20px'
-                            }
-                        ),
-                        dcc.Graph(id='rwa-issuer-chart', style={'height': '250px'})
-                    ]
-                ),
-                html.Div(
-                    className='rwa-card',
-                    children=[
-                        html.H4(
-                            "TOP NETWORKS",
-                            style={
-                                'color': '#fff',
-                                'textAlign': 'center',
-                                'marginBottom': '20px'
-                            }
-                        ),
-                        dcc.Graph(id='rwa-network-chart', style={'height': '250px'})
-                    ]
-                )
-            ]),
-            html.Div(
-                className='rwa-table-container',
-                style={'padding': '0 24px 24px 24px'},
+            dcc.Tab(
+                label='Technical Analysis',
+                className='custom-tab',
+                selected_className='custom-tab--selected',
                 children=[
-                    html.H3(
-                        "RWA TOKEN LIST",
-                        style={'color': 'white', 'marginBottom': '20px', 'fontSize': '1.2rem'}
-                    ),
-                    html.Div(id='rwa-table-content')
-                ]
-            )
-        ]),
-        dcc.Tab(label='Global Market', className='custom-tab', selected_className='custom-tab--selected', children=[
-            html.Div(className='spot-grid', children=[
-                html.Div([
                     html.Div(
-                        className='analytics-card',
-                        style={'marginBottom': '24px', 'padding': '24px'},
+                        className='control-panel',
+                        style={'marginTop': '20px'},
                         children=[
-                            html.Div(
-                                [
-                                    html.Div([
-                                        html.H3(
-                                            "TOTAL CRYPTO MARKET CAP",
+                            html.P(
+                                "SELECT ASSET FOR ANALYSIS",
+                                style={'marginBottom': '8px', 'color': '#888', 'fontSize': '0.75rem'}
+                            ),
+                            dcc.Dropdown(
+                                id='analysis-coin-dropdown',
+                                options=DROPDOWN_OPTIONS,
+                                value=DEFAULT_SYMBOL,
+                                clearable=False,
+                                style={'color': '#000'}
+                            )
+                        ]
+                    ),
+                    html.Div(
+                        className='analytics-grid',
+                        children=[
+                            html.Div([
+                                html.Div(
+                                    className='analytics-card',
+                                    style={'marginBottom': '20px', 'padding': '20px'},
+                                    children=[
+                                        html.Div(
+                                            [
+                                                html.Span("Pi Cycle Top Indicator"),
+                                                html.Span(
+                                                    "111DMA vs 350DMA x2",
+                                                    style={'color': '#888', 'fontSize': '0.8rem'}
+                                                )
+                                            ],
+                                            className='card-title',
                                             style={
-                                                'color': '#888',
-                                                'marginBottom': '10px',
-                                                'fontSize': '0.8rem'
+                                                'display': 'flex',
+                                                'justifyContent': 'space-between',
+                                                'marginBottom': '15px',
+                                                'fontWeight': 'bold'
                                             }
                                         ),
-                                        html.Div([
-                                            html.Span(
-                                                id='global-mkt-cap',
-                                                className='mkt-cap-main',
-                                                style={'fontSize': '3rem', 'fontWeight': 'bold'}
-                                            ),
-                                            html.Span(
-                                                id='global-mkt-change',
-                                                className='mkt-cap-change'
-                                            )
-                                        ])
-                                    ])
-                                ],
-                                style={'display': 'flex', 'justifyContent': 'spaceBetween'}
-                            ),
-                            dcc.Graph(id='global-mkt-chart', style={'height': '320px'})
-                        ]
-                    ),
-                    html.Div(
-                        className='analytics-card',
-                        style={'padding': '24px'},
-                        children=[
-                            html.H4(
-                                "SPOT VOLUME (24H)",
-                                style={'color': '#fff', 'marginBottom': '20px'}
-                            ),
-                            dcc.Graph(id='global-vol-chart', style={'height': '300px'})
+                                        dcc.Graph(id='pi-cycle-chart', style={'height': '320px'})
+                                    ]
+                                ),
+                                html.Div(
+                                    className='analytics-card',
+                                    style={'marginBottom': '20px', 'padding': '20px'},
+                                    children=[
+                                        html.Div(
+                                            [
+                                                html.Span("Rainbow Price Chart"),
+                                                html.Span(
+                                                    "Long Term Trend",
+                                                    style={'color': '#888', 'fontSize': '0.8rem'}
+                                                )
+                                            ],
+                                            className='card-title',
+                                            style={
+                                                'display': 'flex',
+                                                'justifyContent': 'space-between',
+                                                'marginBottom': '15px',
+                                                'fontWeight': 'bold'
+                                            }
+                                        ),
+                                        dcc.Graph(id='rainbow-chart', style={'height': '320px'})
+                                    ]
+                                ),
+                                html.Div(
+                                    className='analytics-card',
+                                    style={'padding': '20px'},
+                                    children=[
+                                        html.Div(
+                                            [
+                                                html.Span("Puell Multiple Chart"),
+                                                html.Span(
+                                                    "Buy/Sell Zones",
+                                                    style={'color': '#888', 'fontSize': '0.8rem'}
+                                                )
+                                            ],
+                                            className='card-title',
+                                            style={
+                                                'display': 'flex',
+                                                'justifyContent': 'space-between',
+                                                'marginBottom': '15px',
+                                                'fontWeight': 'bold'
+                                            }
+                                        ),
+                                        dcc.Graph(id='puell-chart', style={'height': '320px'})
+                                    ]
+                                )
+                            ]),
+                            html.Div([
+                                html.Div(
+                                    className='analytics-card',
+                                    style={'marginBottom': '20px', 'padding': '25px', 'textAlign': 'center'},
+                                    children=[
+                                        html.Div(
+                                            "PUELL MULTIPLE STATUS",
+                                            style={'color': '#888', 'fontSize': '0.8rem'}
+                                        ),
+                                        html.Div(
+                                            id='puell-val-text',
+                                            className='big-stat',
+                                            style={
+                                                'fontSize': '2.5rem',
+                                                'fontWeight': 'bold',
+                                                'margin': '10px 0'
+                                            }
+                                        ),
+                                        html.Div(
+                                            className='meter-bar-container',
+                                            children=[
+                                                html.Div(className='meter-bar-puell'),
+                                                html.Div(id='puell-knob', className='meter-knob')
+                                            ]
+                                        ),
+                                        html.Div(
+                                            className='meter-labels',
+                                            style={
+                                                'display': 'flex',
+                                                'justifyContent': 'space-between',
+                                                'color': '#888',
+                                                'fontSize': '0.8rem'
+                                            },
+                                            children=[
+                                                html.Span("Undervalued"),
+                                                html.Span("Overvalued")
+                                            ]
+                                        )
+                                    ]
+                                ),
+                                html.Div(
+                                    className='analytics-card',
+                                    style={'marginBottom': '20px', 'padding': '25px', 'textAlign': 'center'},
+                                    children=[
+                                        html.Div(
+                                            "CYCLE TOP INDICATOR",
+                                            style={'color': '#888', 'fontSize': '0.8rem'}
+                                        ),
+                                        html.Div(
+                                            id='top-val-text',
+                                            className='big-stat',
+                                            style={
+                                                'fontSize': '2.5rem',
+                                                'fontWeight': 'bold',
+                                                'margin': '10px 0'
+                                            }
+                                        ),
+                                        html.Div(
+                                            className='meter-bar-container',
+                                            children=[
+                                                html.Div(className='meter-bar-top'),
+                                                html.Div(id='top-knob', className='meter-knob')
+                                            ]
+                                        ),
+                                        html.Div(
+                                            className='meter-labels',
+                                            style={
+                                                'display': 'flex',
+                                                'justifyContent': 'space-between',
+                                                'color': '#888',
+                                                'fontSize': '0.8rem'
+                                            },
+                                            children=[
+                                                html.Span("Hold"),
+                                                html.Span("Sell")
+                                            ]
+                                        )
+                                    ]
+                                ),
+                                html.Div(
+                                    className='analytics-card',
+                                    style={'textAlign': 'center', 'padding': '25px'},
+                                    children=[
+                                        html.Div(
+                                            "MARKET REGIME",
+                                            style={'color': '#888', 'fontSize': '0.8rem'}
+                                        ),
+                                        html.H2(
+                                            id='cycle-status-text',
+                                            style={'color': '#fff', 'margin': '15px 0', 'fontSize': '1.8rem'}
+                                        ),
+                                        html.Div(
+                                            id='cycle-desc',
+                                            style={
+                                                'color': '#888',
+                                                'fontSize': '0.9rem',
+                                                'lineHeight': '1.5'
+                                            }
+                                        )
+                                    ]
+                                ),
+                            ])
                         ]
                     )
-                ]),
-                html.Div([
+                ]
+            ),
+            dcc.Tab(
+                label='RWA Assets',
+                className='custom-tab',
+                selected_className='custom-tab--selected',
+                children=[
                     html.Div(
-                        className='analytics-card',
-                        style={'marginBottom': '24px', 'padding': '24px'},
+                        className='rwa-grid',
                         children=[
-                            html.H4(
-                                "HISTORICAL SNAPSHOTS",
-                                style={'color': '#fff', 'marginBottom': '20px'}
-                            ),
                             html.Div(
-                                className='stat-grid',
+                                className='rwa-card',
                                 children=[
                                     html.Div(
-                                        className='stat-card',
-                                        children=[
-                                            html.Div("Yesterday", className='stat-label'),
-                                            html.Div(id='hist-1d', className='stat-val')
-                                        ]
+                                        [
+                                            html.H3(
+                                                "Total Tokenized Market Cap",
+                                                style={'color': '#aaa', 'fontSize': '0.9rem'}
+                                            ),
+                                            html.Div(
+                                                [
+                                                    html.Span(
+                                                        "$16.24B",
+                                                        style={
+                                                            'fontSize': '2.2rem',
+                                                            'fontWeight': 'bold'
+                                                        }
+                                                    ),
+                                                    html.Span(
+                                                        " +1.12%",
+                                                        style={
+                                                            'color': '#FF4136',
+                                                            'fontSize': '1rem',
+                                                            'marginLeft': '10px'
+                                                        }
+                                                    )
+                                                ]
+                                            )
+                                        ],
+                                        style={
+                                            'paddingBottom': '15px',
+                                            'borderBottom': '1px solid #333',
+                                            'marginBottom': '15px'
+                                        }
                                     ),
-                                    html.Div(
-                                        className='stat-card',
-                                        children=[
-                                            html.Div("Last Week", className='stat-label'),
-                                            html.Div(id='hist-7d', className='stat-val')
-                                        ]
-                                    ),
-                                    html.Div(
-                                        className='stat-card',
-                                        children=[
-                                            html.Div("Last Month", className='stat-label'),
-                                            html.Div(id='hist-30d', className='stat-val')
-                                        ]
-                                    ),
-                                    html.Div(
-                                        className='stat-card',
-                                        children=[
-                                            html.Div("Last Year", className='stat-label'),
-                                            html.Div(id='hist-1y', className='stat-val')
-                                        ]
-                                    )
+                                    dcc.Graph(id='rwa-mkt-chart', style={'height': '220px'})
                                 ]
                             ),
-                            html.H4(
-                                "YEARLY RANGE",
-                                style={
-                                    'color': '#fff',
-                                    'marginTop': '30px',
-                                    'marginBottom': '15px'
-                                }
+                            html.Div(
+                                className='rwa-card',
+                                children=[
+                                    html.H4(
+                                        "TOP ISSUERS",
+                                        style={
+                                            'color': '#fff',
+                                            'textAlign': 'center',
+                                            'marginBottom': '20px'
+                                        }
+                                    ),
+                                    dcc.Graph(id='rwa-issuer-chart', style={'height': '250px'})
+                                ]
                             ),
                             html.Div(
-                                className='stat-grid',
+                                className='rwa-card',
                                 children=[
-                                    html.Div(
-                                        className='stat-card',
-                                        children=[
-                                            html.Div("Yearly High", className='stat-label'),
-                                            html.Div(
-                                                id='year-high',
-                                                className='stat-val',
-                                                style={'color': '#00CC96'}
-                                            )
-                                        ]
+                                    html.H4(
+                                        "TOP NETWORKS",
+                                        style={
+                                            'color': '#fff',
+                                            'textAlign': 'center',
+                                            'marginBottom': '20px'
+                                        }
                                     ),
-                                    html.Div(
-                                        className='stat-card',
-                                        children=[
-                                            html.Div("Yearly Low", className='stat-label'),
-                                            html.Div(
-                                                id='year-low',
-                                                className='stat-val',
-                                                style={'color': '#FF4136'}
-                                            )
-                                        ]
-                                    )
+                                    dcc.Graph(id='rwa-network-chart', style={'height': '250px'})
                                 ]
                             )
                         ]
                     ),
                     html.Div(
-                        className='analytics-card',
-                        style={'padding': '24px'},
+                        className='rwa-table-container',
+                        style={'padding': '0 24px 24px 24px'},
                         children=[
-                            html.H4(
-                                "EXCHANGE DOMINANCE",
-                                style={'color': '#fff', 'marginBottom': '20px'}
+                            html.H3(
+                                "RWA TOKEN LIST",
+                                style={
+                                    'color': 'white',
+                                    'marginBottom': '20px',
+                                    'fontSize': '1.2rem'
+                                }
                             ),
-                            dcc.Graph(id='cex-dominance-chart', style={'height': '300px'})
+                            html.Div(id='rwa-table-content')
                         ]
                     )
-                ])
-            ])
-        ]),
-        dcc.Tab(
-            label='TradingView',
-            className='custom-tab',
-            selected_className='custom-tab--selected',
-            children=[
-                html.Div(
-                    style={'height': '800px', 'padding': '24px'},
-                    children=[
-                        html.Div(
-                            style={
-                                'width': '100%',
-                                'height': '100%',
-                                'borderRadius': '12px',
-                                'overflow': 'hidden',
-                                'boxShadow': '0 10px 30px rgba(0,0,0,0.5)'
-                            },
-                            children=[
-                                html.Iframe(
-                                    id='tradingview-iframe',
-                                    style={'width': '100%', 'height': '100%', 'border': 'none'}
-                                )
-                            ]
-                        )
-                    ]
-                )
-            ]
-        ),
-        dcc.Tab(
-            label='Screeners',
-            className='custom-tab',
-            selected_className='custom-tab--selected',
-            children=[
-                html.Div(
-                    className='market-table-container',
-                    style={'padding': '24px'},
-                    children=[
-                        html.H2(
-                            "TOP 100 CRYPTOCURRENCIES",
-                            style={
-                                'color': 'white',
-                                'marginBottom': '25px',
-                                'fontSize': '1.5rem'
-                            }
-                        ),
-                        html.Div(
-                            id='markets-table-content',
-                            style={
-                                'overflowX': 'auto',
-                                'borderRadius': '12px',
-                                'border': '1px solid #2a2e39'
-                            },
-                            children="Loading Market Data..."
-                        ),
-                        html.Div(
-                            className='pagination-container',
-                            children=[
-                                html.Button(
-                                    "< Prev",
-                                    id='prev-btn',
-                                    className='page-btn'
-                                ),
-                                html.Span(
-                                    id='page-display',
-                                    className='page-text',
-                                    children="Page 1 of 10"
-                                ),
-                                html.Button(
-                                    "Next >",
-                                    id='next-btn',
-                                    className='page-btn'
-                                )
-                            ]
-                        )
-                    ]
-                )
-            ]
-        ),
-        dcc.Tab(
-            label='DexScan',
-            className='custom-tab',
-            selected_className='custom-tab--selected',
-            children=[
-                html.Div(
-                    style={'padding': '24px'},
-                    children=[
-                        html.H2(
-                            "LIVE DEX PAIRS (SIMULATED)",
-                            style={'color': 'white', 'marginBottom': '25px'}
-                        ),
-                        html.Div(
-                            id='dexscan-content',
-                            className='dex-scroll-container',
-                            children="Loading DexScan..."
-                        )
-                    ]
-                )
-            ]
-        ),
-        dcc.Tab(
-            label='Upcoming Sales',
-            className='custom-tab',
-            selected_className='custom-tab--selected',
-            children=[
-                html.Div(
-                    style={'padding': '24px'},
-                    children=[
-                        html.H2(
-                            "🚀 HIGH POTENTIAL PRESALES",
-                            style={
-                                'color': '#00CC96',
-                                'marginBottom': '30px',
-                                'textAlign': 'center',
-                                'letterSpacing': '2px'
-                            }
-                        ),
-                        html.Div(
-                            className='presale-grid',
-                            children=[
+                ]
+            ),
+            dcc.Tab(
+                label='Global Market',
+                className='custom-tab',
+                selected_className='custom-tab--selected',
+                children=[
+                    html.Div(
+                        className='spot-grid',
+                        children=[
+                            html.Div([
                                 html.Div(
-                                    className='presale-card',
+                                    className='analytics-card',
+                                    style={'marginBottom': '24px', 'padding': '24px'},
                                     children=[
-                                        html.Div(p['category'], className='presale-badge'),
                                         html.Div(
-                                            className='presale-header',
-                                            children=[
-                                                html.Div(
-                                                    p['symbol'][:2],
-                                                    className='presale-icon'
-                                                ),
+                                            [
                                                 html.Div([
-                                                    html.Div(
-                                                        p['name'],
-                                                        className='presale-title'
+                                                    html.H3(
+                                                        "TOTAL CRYPTO MARKET CAP",
+                                                        style={
+                                                            'color': '#888',
+                                                            'marginBottom': '10px',
+                                                            'fontSize': '0.8rem'
+                                                        }
                                                     ),
                                                     html.Div(
-                                                        p['symbol'],
-                                                        className='presale-symbol'
+                                                        [
+                                                            html.Span(
+                                                                id='global-mkt-cap',
+                                                                className='mkt-cap-main',
+                                                                style={
+                                                                    'fontSize': '3rem',
+                                                                    'fontWeight': 'bold'
+                                                                }
+                                                            ),
+                                                            html.Span(
+                                                                id='global-mkt-change',
+                                                                className='mkt-cap-change'
+                                                            )
+                                                        ]
                                                     )
                                                 ])
-                                            ]
+                                            ],
+                                            style={'display': 'flex', 'justifyContent': 'space-between'}
                                         ),
-                                        html.P(p['desc'], className='presale-desc'),
+                                        dcc.Graph(id='global-mkt-chart', style={'height': '320px'})
+                                    ]
+                                ),
+                                html.Div(
+                                    className='analytics-card',
+                                    style={'padding': '24px'},
+                                    children=[
+                                        html.H4(
+                                            "SPOT VOLUME (24H)",
+                                            style={'color': '#fff', 'marginBottom': '20px'}
+                                        ),
+                                        dcc.Graph(id='global-vol-chart', style={'height': '300px'})
+                                    ]
+                                )
+                            ]),
+                            html.Div([
+                                html.Div(
+                                    className='analytics-card',
+                                    style={'marginBottom': '24px', 'padding': '24px'},
+                                    children=[
+                                        html.H4(
+                                            "HISTORICAL SNAPSHOTS",
+                                            style={'color': '#fff', 'marginBottom': '20px'}
+                                        ),
                                         html.Div(
-                                            className='progress-container',
+                                            className='stat-grid',
                                             children=[
                                                 html.Div(
-                                                    className='progress-labels',
+                                                    className='stat-card',
                                                     children=[
-                                                        html.Span(f"Raised: {p['raised']}"),
-                                                        html.Span(f"Target: {p['target']}")
+                                                        html.Div("Yesterday", className='stat-label'),
+                                                        html.Div(id='hist-1d', className='stat-val')
                                                     ]
                                                 ),
                                                 html.Div(
-                                                    className='progress-bar-bg',
+                                                    className='stat-card',
                                                     children=[
-                                                        html.Div(
-                                                            className='progress-bar-fill',
-                                                            style={'width': p['raised']}
-                                                        )
+                                                        html.Div("Last Week", className='stat-label'),
+                                                        html.Div(id='hist-7d', className='stat-val')
+                                                    ]
+                                                ),
+                                                html.Div(
+                                                    className='stat-card',
+                                                    children=[
+                                                        html.Div("Last Month", className='stat-label'),
+                                                        html.Div(id='hist-30d', className='stat-val')
+                                                    ]
+                                                ),
+                                                html.Div(
+                                                    className='stat-card',
+                                                    children=[
+                                                        html.Div("Last Year", className='stat-label'),
+                                                        html.Div(id='hist-1y', className='stat-val')
                                                     ]
                                                 )
                                             ]
                                         ),
-                                        html.Div(
-                                            f"Entry Price: {p['price']}",
-                                            className='countdown'
+                                        html.H4(
+                                            "YEARLY RANGE",
+                                            style={
+                                                'color': '#fff',
+                                                'marginTop': '30px',
+                                                'marginBottom': '15px'
+                                            }
                                         ),
-                                        html.Button("VIEW DETAILS", className='presale-btn')
+                                        html.Div(
+                                            className='stat-grid',
+                                            children=[
+                                                html.Div(
+                                                    className='stat-card',
+                                                    children=[
+                                                        html.Div("Yearly High", className='stat-label'),
+                                                        html.Div(
+                                                            id='year-high',
+                                                            className='stat-val',
+                                                            style={'color': '#00CC96'}
+                                                        )
+                                                    ]
+                                                ),
+                                                html.Div(
+                                                    className='stat-card',
+                                                    children=[
+                                                        html.Div("Yearly Low", className='stat-label'),
+                                                        html.Div(
+                                                            id='year-low',
+                                                            className='stat-val',
+                                                            style={'color': '#FF4136'}
+                                                        )
+                                                    ]
+                                                )
+                                            ]
+                                        )
+                                    ]
+                                ),
+                                html.Div(
+                                    className='analytics-card',
+                                    style={'padding': '24px'},
+                                    children=[
+                                        html.H4(
+                                            "EXCHANGE DOMINANCE",
+                                            style={'color': '#fff', 'marginBottom': '20px'}
+                                        ),
+                                        dcc.Graph(id='cex-dominance-chart', style={'height': '300px'})
                                     ]
                                 )
-                                for p in UPCOMING_PROJECTS
-                            ]
-                        )
-                    ]
-                )
-            ]
-        ),
-        dcc.Tab(
-            label='Trending',
-            className='custom-tab',
-            selected_className='custom-tab--selected',
-            children=[
-                html.Div(
-                    id='trending-content',
-                    className='trending-wrapper',
-                    children="Loading Trending Data..."
-                )
-            ]
-        ),
-        dcc.Tab(
-            label='News Feed',
-            className='custom-tab',
-            selected_className='custom-tab--selected',
-            children=[
-                html.Div(
-                    id='news-content',
-                    className='news-grid',
-                    children="Loading Latest Crypto News..."
-                )
-            ]
-        )
-    ]),
+                            ])
+                        ]
+                    )
+                ]
+            ),
+            dcc.Tab(
+                label='TradingView',
+                className='custom-tab',
+                selected_className='custom-tab--selected',
+                children=[
+                    html.Div(
+                        style={'height': '800px', 'padding': '24px'},
+                        children=[
+                            html.Div(
+                                style={
+                                    'width': '100%',
+                                    'height': '100%',
+                                    'borderRadius': '12px',
+                                    'overflow': 'hidden',
+                                    'boxShadow': '0 10px 30px rgba(0,0,0,0.5)'
+                                },
+                                children=[
+                                    html.Iframe(
+                                        id='tradingview-iframe',
+                                        style={'width': '100%', 'height': '100%', 'border': 'none'}
+                                    )
+                                ]
+                            )
+                        ]
+                    )
+                ]
+            ),
+            dcc.Tab(
+                label='Screeners',
+                className='custom-tab',
+                selected_className='custom-tab--selected',
+                children=[
+                    html.Div(
+                        className='market-table-container',
+                        style={'padding': '24px'},
+                        children=[
+                            html.H2(
+                                "TOP 100 CRYPTOCURRENCIES",
+                                style={'color': 'white', 'marginBottom': '25px', 'fontSize': '1.5rem'}
+                            ),
+                            html.Div(
+                                id='markets-table-content',
+                                style={
+                                    'overflowX': 'auto',
+                                    'borderRadius': '12px',
+                                    'border': '1px solid #2a2e39'
+                                },
+                                children="Loading Market Data..."
+                            ),
+                            html.Div(
+                                className='pagination-container',
+                                children=[
+                                    html.Button("< Prev", id='prev-btn', className='page-btn'),
+                                    html.Span(
+                                        id='page-display',
+                                        className='page-text',
+                                        children="Page 1 of 10"
+                                    ),
+                                    html.Button("Next >", id='next-btn', className='page-btn')
+                                ]
+                            )
+                        ]
+                    )
+                ]
+            ),
+            dcc.Tab(
+                label='DexScan',
+                className='custom-tab',
+                selected_className='custom-tab--selected',
+                children=[
+                    html.Div(
+                        style={'padding': '24px'},
+                        children=[
+                            html.H2(
+                                "LIVE DEX PAIRS (SIMULATED)",
+                                style={'color': 'white', 'marginBottom': '25px'}
+                            ),
+                            html.Div(
+                                id='dexscan-content',
+                                className='dex-scroll-container',
+                                children="Loading DexScan..."
+                            )
+                        ]
+                    )
+                ]
+            ),
+            dcc.Tab(
+                label='Upcoming Sales',
+                className='custom-tab',
+                selected_className='custom-tab--selected',
+                children=[
+                    html.Div(
+                        style={'padding': '24px'},
+                        children=[
+                            html.H2(
+                                "🚀 HIGH POTENTIAL PRESALES",
+                                style={
+                                    'color': '#00CC96',
+                                    'marginBottom': '30px',
+                                    'textAlign': 'center',
+                                    'letterSpacing': '2px'
+                                }
+                            ),
+                            html.Div(
+                                className='presale-grid',
+                                children=[
+                                    html.Div(
+                                        className='presale-card',
+                                        children=[
+                                            html.Div(p['category'], className='presale-badge'),
+                                            html.Div(
+                                                className='presale-header',
+                                                children=[
+                                                    html.Div(
+                                                        p['symbol'][:2],
+                                                        className='presale-icon'
+                                                    ),
+                                                    html.Div(
+                                                        [
+                                                            html.Div(
+                                                                p['name'],
+                                                                className='presale-title'
+                                                            ),
+                                                            html.Div(
+                                                                p['symbol'],
+                                                                className='presale-symbol'
+                                                            )
+                                                        ]
+                                                    )
+                                                ]
+                                            ),
+                                            html.P(p['desc'], className='presale-desc'),
+                                            html.Div(
+                                                className='progress-container',
+                                                children=[
+                                                    html.Div(
+                                                        className='progress-labels',
+                                                        children=[
+                                                            html.Span(f"Raised: {p['raised']}"),
+                                                            html.Span(f"Target: {p['target']}")
+                                                        ]
+                                                    ),
+                                                    html.Div(
+                                                        className='progress-bar-bg',
+                                                        children=[
+                                                            html.Div(
+                                                                className='progress-bar-fill',
+                                                                style={'width': p['raised']}
+                                                            )
+                                                        ]
+                                                    )
+                                                ]
+                                            ),
+                                            html.Div(
+                                                f"Entry Price: {p['price']}",
+                                                className='countdown'
+                                            ),
+                                            html.Button("VIEW DETAILS", className='presale-btn')
+                                        ]
+                                    )
+                                    for p in UPCOMING_PROJECTS
+                                ]
+                            )
+                        ]
+                    )
+                ]
+            ),
+            dcc.Tab(
+                label='Trending',
+                className='custom-tab',
+                selected_className='custom-tab--selected',
+                children=[
+                    html.Div(
+                        id='trending-content',
+                        className='trending-wrapper',
+                        children="Loading Trending Data..."
+                    )
+                ]
+            ),
+            dcc.Tab(
+                label='News Feed',
+                className='custom-tab',
+                selected_className='custom-tab--selected',
+                children=[
+                    html.Div(
+                        id='news-content',
+                        className='news-grid',
+                        children="Loading Latest Crypto News..."
+                    )
+                ]
+            )
+        ]
+    ),
     dcc.Interval(id='interval-component', interval=2000, n_intervals=0),
     dcc.Interval(id='market-interval', interval=10000, n_intervals=0)
 ])
 
-# --- FIX: INITIAL LAYOUT MUST CONTAIN LOGIN PAGE CONTENT TO RENDER ---
+# --- APP MAIN LAYOUT ---
 app.layout = html.Div([
     dcc.Store(id='login-state', data=False),
     html.Div(id='page-content', children=login_layout)
@@ -1165,33 +1343,44 @@ app.layout = html.Div([
 
 # --- CALLBACKS ---
 
-# LOGIN / LOGOUT HANDLER (combined)
+# LOGIN + LOGOUT
 @app.callback(
-    [Output('page-content', 'children'), Output('login-error', 'children')],
-    [Input('login-button', 'n_clicks'), Input('logout-btn', 'n_clicks')],
-    [State('username-box', 'value'), State('password-box', 'value'), State('login-state', 'data')],
+    [Output('page-content', 'children'),
+     Output('login-error', 'children'),
+     Output('login-state', 'data')],
+    [Input('login-button', 'n_clicks'),
+     Input('logout-button', 'n_clicks')],
+    [State('username-box', 'value'),
+     State('password-box', 'value'),
+     State('login-state', 'data')],
     prevent_initial_call=False
 )
 def manage_login(login_clicks, logout_clicks, username, password, is_logged_in):
-    trigger = ctx.triggered_id
+    triggered = ctx.triggered_id
 
-    # first load: nothing clicked
-    if trigger is None:
-        return no_update, no_update
+    # First page load
+    if triggered is None:
+        return no_update, no_update, no_update
 
-    # logout button clicked
-    if trigger == 'logout-btn':
-        return login_layout, ""
+    # LOGIN BUTTON
+    if triggered == 'login-button':
+        if username == "raghav" and password == "1234":
+            return dashboard_layout, "", True
+        else:
+            return login_layout, "Invalid Credentials (Try: raghav / 1234)", False
 
-    # login button click
-    if username == "raghav" and password == "1234":
-        return dashboard_layout, ""
-    return login_layout, "Invalid Credentials (Try: raghav / 1234)"
+    # LOGOUT BUTTON
+    if triggered == 'logout-button':
+        return login_layout, "", False
+
+    return no_update, no_update, no_update
 
 
+# CONTACT MODAL
 @app.callback(
     Output('contact-modal', 'className'),
-    [Input('contact-btn', 'n_clicks'), Input('close-contact', 'n_clicks')],
+    [Input('contact-btn', 'n_clicks'),
+     Input('close-contact', 'n_clicks')],
     [State('contact-modal', 'className')]
 )
 def toggle_contact_modal(open_click, close_click, current_class):
@@ -1200,9 +1389,11 @@ def toggle_contact_modal(open_click, close_click, current_class):
     return "modal-overlay modal-active" if 'contact-btn' in ctx.triggered_id else "modal-overlay"
 
 
+# ABOUT MODAL
 @app.callback(
     Output('about-modal', 'className'),
-    [Input('about-btn', 'n_clicks'), Input('close-about', 'n_clicks')],
+    [Input('about-btn', 'n_clicks'),
+     Input('close-about', 'n_clicks')],
     [State('about-modal', 'className')]
 )
 def toggle_about_modal(open_click, close_click, current_class):
@@ -1211,24 +1402,31 @@ def toggle_about_modal(open_click, close_click, current_class):
     return "modal-overlay modal-active" if 'about-btn' in ctx.triggered_id else "modal-overlay"
 
 
-# --- ALL DASHBOARD CALLBACKS ---
+# --- DASHBOARD CALLBACKS ---
+
+# RWA TAB (interval + refresh)
 @app.callback(
     [Output('rwa-mkt-chart', 'figure'),
      Output('rwa-issuer-chart', 'figure'),
      Output('rwa-network-chart', 'figure'),
      Output('rwa-table-content', 'children')],
-    Input('interval-component', 'n_intervals')
+    [Input('interval-component', 'n_intervals'),
+     Input('refresh-button', 'n_clicks')]
 )
-def update_rwa(n):
+def update_rwa(n, refresh_clicks):
     x_vals = list(range(30))
     y_vals = [3.2 + (i*0.01 + random.uniform(-0.05, 0.05)) for i in x_vals]
 
-    fig_mkt = go.Figure(go.Scatter(
-        x=x_vals, y=y_vals, mode='lines',
-        fill='tozeroy',
-        line=dict(color='#00CC96', width=3),
-        fillcolor='rgba(0, 204, 150, 0.1)'
-    ))
+    fig_mkt = go.Figure(
+        go.Scatter(
+            x=x_vals,
+            y=y_vals,
+            mode='lines',
+            fill='tozeroy',
+            line=dict(color='#00CC96', width=3),
+            fillcolor='rgba(0, 204, 150, 0.1)'
+        )
+    )
     fig_mkt.update_layout(
         template='plotly_dark',
         paper_bgcolor='rgba(0,0,0,0)',
@@ -1238,46 +1436,38 @@ def update_rwa(n):
         yaxis=dict(visible=False)
     )
 
-    fig_issuer = go.Figure(go.Pie(
-        labels=['Tether', 'Paxos', 'Ondo', 'Backed'],
-        values=[43, 38, 10, 9],
-        hole=0.7,
-        textinfo='none',
-        marker=dict(colors=['#2962ff', '#00CC96', '#F5B97F', '#FF4136'])
-    ))
+    fig_issuer = go.Figure(
+        go.Pie(
+            labels=['Tether', 'Paxos', 'Ondo', 'Backed'],
+            values=[43, 38, 10, 9],
+            hole=0.7,
+            textinfo='none',
+            marker=dict(colors=['#2962ff', '#00CC96', '#F5B97F', '#FF4136'])
+        )
+    )
     fig_issuer.update_layout(
         template='plotly_dark',
         paper_bgcolor='rgba(0,0,0,0)',
         margin=dict(l=20, r=20, t=0, b=20),
         showlegend=True,
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=-0.2,
-            xanchor="center",
-            x=0.5
-        )
+        legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5)
     )
 
-    fig_net = go.Figure(go.Pie(
-        labels=['Ethereum', 'Solana', 'Arbitrum'],
-        values=[93, 6, 1],
-        hole=0.7,
-        textinfo='none',
-        marker=dict(colors=['#2962ff', '#00CC96', '#F5B97F'])
-    ))
+    fig_net = go.Figure(
+        go.Pie(
+            labels=['Ethereum', 'Solana', 'Arbitrum'],
+            values=[93, 6, 1],
+            hole=0.7,
+            textinfo='none',
+            marker=dict(colors=['#2962ff', '#00CC96', '#F5B97F'])
+        )
+    )
     fig_net.update_layout(
         template='plotly_dark',
         paper_bgcolor='rgba(0,0,0,0)',
         margin=dict(l=20, r=20, t=0, b=20),
         showlegend=True,
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=-0.2,
-            xanchor="center",
-            x=0.5
-        )
+        legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5)
     )
 
     header = html.Tr([
@@ -1302,10 +1492,7 @@ def update_rwa(n):
                         children=[
                             html.Img(src=asset['icon'], className='coin-icon'),
                             html.Div([
-                                html.Div(
-                                    asset['name'],
-                                    style={'fontWeight': '600'}
-                                ),
+                                html.Div(asset['name'], style={'fontWeight': '600'}),
                                 html.Div(
                                     asset['ticker'],
                                     className='coin-symbol',
@@ -1316,19 +1503,21 @@ def update_rwa(n):
                     )
                 ),
                 html.Td(asset['type'], style={'color': '#aaa', 'fontSize': '0.85rem'}),
-                html.Td(
-                    format_currency(price),
-                    style={'fontWeight': '600', 'fontFamily': 'monospace'}
-                ),
+                html.Td(format_currency(price), style={'fontWeight': '600', 'fontFamily': 'monospace'}),
                 html.Td(f"{change:+.2f}%", className=col),
                 html.Td(format_compact(asset['mkt_cap']), style={'color': '#ccc'})
             ])
         )
 
-    table = html.Table([html.Thead(header), html.Tbody(rows)], className='crypto-table')
+    table = html.Table(
+        [html.Thead(header), html.Tbody(rows)],
+        className='crypto-table'
+    )
+
     return fig_mkt, fig_issuer, fig_net, table
 
 
+# GLOBAL MARKET TAB (interval + refresh)
 @app.callback(
     [Output('global-mkt-cap', 'children'),
      Output('global-mkt-change', 'children'),
@@ -1341,15 +1530,24 @@ def update_rwa(n):
      Output('hist-1y', 'children'),
      Output('year-high', 'children'),
      Output('year-low', 'children')],
-    Input('interval-component', 'n_intervals')
+    [Input('interval-component', 'n_intervals'),
+     Input('refresh-button', 'n_clicks')]
 )
-def update_spot_market(n):
+def update_spot_market(n, refresh_clicks):
     data = generate_global_market_data()
     if not data:
         return (
-            "Loading...", "",
-            go.Figure(), go.Figure(), go.Figure(),
-            "-", "-", "-", "-", "-", "-"
+            "Loading...",
+            "",
+            go.Figure(),
+            go.Figure(),
+            go.Figure(),
+            "-",
+            "-",
+            "-",
+            "-",
+            "-",
+            "-"
         )
 
     times, mkt_caps, volumes = data
@@ -1358,12 +1556,16 @@ def update_spot_market(n):
     change = ((current_cap - prev_cap) / prev_cap) * 100
     color = '#00CC96' if change >= 0 else '#FF4136'
 
-    fig_cap = go.Figure(go.Scatter(
-        x=times, y=mkt_caps, mode='lines',
-        fill='tozeroy',
-        line=dict(color='#2962ff', width=3),
-        fillcolor='rgba(41, 98, 255, 0.1)'
-    ))
+    fig_cap = go.Figure(
+        go.Scatter(
+            x=times,
+            y=mkt_caps,
+            mode='lines',
+            fill='tozeroy',
+            line=dict(color='#2962ff', width=3),
+            fillcolor='rgba(41, 98, 255, 0.1)'
+        )
+    )
     fig_cap.update_layout(
         template='plotly_dark',
         paper_bgcolor='rgba(0,0,0,0)',
@@ -1374,7 +1576,13 @@ def update_spot_market(n):
         yaxis=dict(showgrid=True, gridcolor='rgba(255,255,255,0.05)')
     )
 
-    fig_vol = go.Figure(go.Bar(x=times, y=volumes, marker_color='#00CC96'))
+    fig_vol = go.Figure(
+        go.Bar(
+            x=times,
+            y=volumes,
+            marker_color='#00CC96'
+        )
+    )
     fig_vol.update_layout(
         template='plotly_dark',
         paper_bgcolor='rgba(0,0,0,0)',
@@ -1392,10 +1600,18 @@ def update_spot_market(n):
     y_others = 100 - (y_binance + y_coinbase + y_dex)
 
     fig_dom = go.Figure()
-    fig_dom.add_trace(go.Scatter(x=x_vals, y=y_binance, stackgroup='one', name='Binance', line=dict(width=0)))
-    fig_dom.add_trace(go.Scatter(x=x_vals, y=y_coinbase, stackgroup='one', name='Coinbase', line=dict(width=0)))
-    fig_dom.add_trace(go.Scatter(x=x_vals, y=y_dex, stackgroup='one', name='DEXs', line=dict(width=0)))
-    fig_dom.add_trace(go.Scatter(x=x_vals, y=y_others, stackgroup='one', name='Others', line=dict(width=0)))
+    fig_dom.add_trace(
+        go.Scatter(x=x_vals, y=y_binance, stackgroup='one', name='Binance', line=dict(width=0))
+    )
+    fig_dom.add_trace(
+        go.Scatter(x=x_vals, y=y_coinbase, stackgroup='one', name='Coinbase', line=dict(width=0))
+    )
+    fig_dom.add_trace(
+        go.Scatter(x=x_vals, y=y_dex, stackgroup='one', name='DEXs', line=dict(width=0))
+    )
+    fig_dom.add_trace(
+        go.Scatter(x=x_vals, y=y_others, stackgroup='one', name='Others', line=dict(width=0))
+    )
     fig_dom.update_layout(
         template='plotly_dark',
         paper_bgcolor='rgba(0,0,0,0)',
@@ -1407,7 +1623,10 @@ def update_spot_market(n):
 
     return (
         format_compact(current_cap),
-        html.Span(f"{change:+.2f}% (24h)", style={'color': color, 'fontSize': '1.2rem'}),
+        html.Span(
+            f"{change:+.2f}% (24h)",
+            style={'color': color, 'fontSize': '1.2rem'}
+        ),
         fig_cap,
         fig_vol,
         fig_dom,
@@ -1420,6 +1639,7 @@ def update_spot_market(n):
     )
 
 
+# TECHNICAL ANALYSIS TAB (interval + refresh)
 @app.callback(
     [Output('pi-cycle-chart', 'figure'),
      Output('rainbow-chart', 'figure'),
@@ -1431,9 +1651,10 @@ def update_spot_market(n):
      Output('cycle-status-text', 'children'),
      Output('cycle-desc', 'children')],
     [Input('interval-component', 'n_intervals'),
-     Input('analysis-coin-dropdown', 'value')]
+     Input('analysis-coin-dropdown', 'value'),
+     Input('refresh-button', 'n_clicks')]
 )
-def update_analytics(n, selected_symbol):
+def update_analytics(n, selected_symbol, refresh_clicks):
     if not selected_symbol:
         return go.Figure(), go.Figure(), go.Figure(), "", {}, "", {}, "", ""
 
@@ -1446,23 +1667,35 @@ def update_analytics(n, selected_symbol):
             "N/A", {}, "N/A", {}, "No Data", "Select BTC/ETH"
         )
 
-    # Pi Cycle chart
+    # Pi cycle
     fig_pi = go.Figure()
-    fig_pi.add_trace(go.Scatter(
-        x=df['timestamp'], y=df['close'],
-        mode='lines', name='Price',
-        line=dict(color='rgba(255,255,255,0.8)', width=1)
-    ))
-    fig_pi.add_trace(go.Scatter(
-        x=df['timestamp'], y=df['111DMA'],
-        mode='lines', name='111 DMA',
-        line=dict(color='#00CC96', width=2)
-    ))
-    fig_pi.add_trace(go.Scatter(
-        x=df['timestamp'], y=df['350DMA'],
-        mode='lines', name='350 DMA x2',
-        line=dict(color='#FF4136', width=2)
-    ))
+    fig_pi.add_trace(
+        go.Scatter(
+            x=df['timestamp'],
+            y=df['close'],
+            mode='lines',
+            name='Price',
+            line=dict(color='rgba(255,255,255,0.8)', width=1)
+        )
+    )
+    fig_pi.add_trace(
+        go.Scatter(
+            x=df['timestamp'],
+            y=df['111DMA'],
+            mode='lines',
+            name='111 DMA',
+            line=dict(color='#00CC96', width=2)
+        )
+    )
+    fig_pi.add_trace(
+        go.Scatter(
+            x=df['timestamp'],
+            y=df['350DMA'],
+            mode='lines',
+            name='350 DMA x2',
+            line=dict(color='#FF4136', width=2)
+        )
+    )
     fig_pi.update_layout(
         template='plotly_dark',
         paper_bgcolor='rgba(0,0,0,0)',
@@ -1474,29 +1707,33 @@ def update_analytics(n, selected_symbol):
         xaxis=dict(showgrid=False)
     )
 
-    # Rainbow chart
+    # Rainbow
     fig_rain = go.Figure()
     base = df['Rainbow_Base']
     colors = ['#6a0dad', '#2962ff', '#00CC96', '#FFD700', '#FF8C00', '#FF4136']
     multipliers = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75]
     for i, mult in enumerate(multipliers):
-        fig_rain.add_trace(go.Scatter(
+        fig_rain.add_trace(
+            go.Scatter(
+                x=df['timestamp'],
+                y=base*mult,
+                mode='lines',
+                line=dict(width=0),
+                showlegend=False,
+                fill='tonexty' if i > 0 else 'none',
+                fillcolor=colors[i],
+                opacity=0.3
+            )
+        )
+    fig_rain.add_trace(
+        go.Scatter(
             x=df['timestamp'],
-            y=base * mult,
+            y=df['close'],
             mode='lines',
-            line=dict(width=0),
-            showlegend=False,
-            fill='tonexty' if i > 0 else 'none',
-            fillcolor=colors[i],
-            opacity=0.3
-        ))
-    fig_rain.add_trace(go.Scatter(
-        x=df['timestamp'],
-        y=df['close'],
-        mode='lines',
-        name='Price',
-        line=dict(color='white', width=2)
-    ))
+            name='Price',
+            line=dict(color='white', width=2)
+        )
+    )
     fig_rain.update_layout(
         template='plotly_dark',
         paper_bgcolor='rgba(0,0,0,0)',
@@ -1509,17 +1746,27 @@ def update_analytics(n, selected_symbol):
         xaxis=dict(showgrid=False)
     )
 
-    # Puell chart
+    # Puell
     fig_puell = go.Figure()
-    fig_puell.add_hrect(y0=4, y1=10, fillcolor="rgba(255, 65, 54, 0.2)", line_width=0)
-    fig_puell.add_hrect(y0=0, y1=0.5, fillcolor="rgba(0, 204, 150, 0.2)", line_width=0)
-    fig_puell.add_trace(go.Scatter(
-        x=df['timestamp'],
-        y=df['Puell'],
-        mode='lines',
-        name='Puell Multiple',
-        line=dict(color='#2962ff', width=2)
-    ))
+    fig_puell.add_hrect(
+        y0=4, y1=10,
+        fillcolor="rgba(255, 65, 54, 0.2)",
+        line_width=0
+    )
+    fig_puell.add_hrect(
+        y0=0, y1=0.5,
+        fillcolor="rgba(0, 204, 150, 0.2)",
+        line_width=0
+    )
+    fig_puell.add_trace(
+        go.Scatter(
+            x=df['timestamp'],
+            y=df['Puell'],
+            mode='lines',
+            name='Puell Multiple',
+            line=dict(color='#2962ff', width=2)
+        )
+    )
     fig_puell.update_layout(
         template='plotly_dark',
         paper_bgcolor='rgba(0,0,0,0)',
@@ -1536,8 +1783,10 @@ def update_analytics(n, selected_symbol):
     top_text = f"{top_score:.1f}%"
     top_style = {'left': f'{top_score}%'}
 
-    dma_200_series = df['close'].rolling(window=200).mean()
-    dma_200 = dma_200_series.iloc[-1] if not pd.isna(dma_200_series.iloc[-1]) else 0
+    dma_200 = df['close'].rolling(window=200).mean().iloc[-1]
+    if pd.isna(dma_200):
+        dma_200 = 0
+
     val_score = 50
     if dma_200 > 0:
         val_score = min(max((df['close'].iloc[-1] / dma_200 - 0.5) / 1.9 * 100, 0), 100)
@@ -1552,13 +1801,19 @@ def update_analytics(n, selected_symbol):
         desc = "Historical buy zone detected."
 
     return (
-        fig_pi, fig_rain, fig_puell,
-        puell_text, puell_style,
-        top_text, top_style,
-        status, desc
+        fig_pi,
+        fig_rain,
+        fig_puell,
+        puell_text,
+        puell_style,
+        top_text,
+        top_style,
+        status,
+        desc
     )
 
 
+# TIMEFRAME CONTROLS
 @app.callback(
     [Output('timeframe-store', 'data'),
      Output({'type': 'tf-btn', 'index': ALL}, 'className'),
@@ -1621,6 +1876,7 @@ def update_controls(n_clicks, current_tf_data):
     return tf_data, styles, interval_speed
 
 
+# OVERVIEW TAB (interval + refresh)
 @app.callback(
     [Output('live-candlestick-chart', 'figure'),
      Output('live-price-display', 'children'),
@@ -1630,13 +1886,12 @@ def update_controls(n_clicks, current_tf_data):
      Output('tradingview-iframe', 'srcDoc')],
     [Input('interval-component', 'n_intervals'),
      Input('coin-select-dropdown', 'value'),
-     Input('timeframe-store', 'data')]
+     Input('timeframe-store', 'data'),
+     Input('refresh-button', 'n_clicks')]
 )
-def update_overview(n, selected_symbol, tf_data):
+def update_overview(n, selected_symbol, tf_data, refresh_clicks):
     if not selected_symbol:
-        return (dash.no_update, dash.no_update,
-                dash.no_update, dash.no_update,
-                dash.no_update, dash.no_update)
+        return (dash.no_update,) * 6
 
     tv_html = get_tradingview_html(selected_symbol)
     tickers = {}
@@ -1652,7 +1907,7 @@ def update_overview(n, selected_symbol, tf_data):
         return go.Figure(), "Loading...", "Loading...", go.Figure(), "Loading...", tv_html
 
     latest_price = selected_ticker.get('last', df['close'].iloc[-1]) * USD_TO_INR_RATE
-    pct_change = selected_ticker.get('percentage', 0)
+    pct_change = selected_ticker.get('percentage', 0) or 0
     volume = selected_ticker.get('quoteVolume', 0) * USD_TO_INR_RATE
     color = '#00CC96' if pct_change >= 0 else '#FF4136'
     full_name = SYMBOL_MAP.get(selected_symbol, selected_symbol)
@@ -1709,7 +1964,7 @@ def update_overview(n, selected_symbol, tf_data):
                     children=[
                         html.Div("Total Supply", className='metric-title'),
                         html.Div(
-                            f"{format_compact(supply['supply']).replace('₹', '').strip()}",
+                            f"{format_compact(supply['supply']).replace('₹', '')}",
                             className='metric-value'
                         )
                     ]
@@ -1719,7 +1974,7 @@ def update_overview(n, selected_symbol, tf_data):
                     children=[
                         html.Div("Max Supply", className='metric-title'),
                         html.Div(
-                            f"{format_compact(supply['max']).replace('₹', '').strip()}" if supply['max'] else "∞",
+                            f"{format_compact(supply['max']).replace('₹', '')}" if supply['max'] else "∞",
                             className='metric-value'
                         )
                     ]
@@ -1729,7 +1984,7 @@ def update_overview(n, selected_symbol, tf_data):
                     children=[
                         html.Div("Circulating", className='metric-title'),
                         html.Div(
-                            f"{format_compact(supply['supply']).replace('₹', '').strip()}",
+                            f"{format_compact(supply['supply']).replace('₹', '')}",
                             className='metric-value'
                         )
                     ]
@@ -1738,23 +1993,28 @@ def update_overview(n, selected_symbol, tf_data):
         )
     ]
 
-    fig_candle = go.Figure(go.Candlestick(
-        x=df['timestamp'],
-        open=df['open'],
-        high=df['high'],
-        low=df['low'],
-        close=df['close'],
-        increasing_line_color='#00CC96',
-        decreasing_line_color='#FF4136',
-        name='Price'
-    ))
+    # Candlestick
+    fig_candle = go.Figure(
+        go.Candlestick(
+            x=df['timestamp'],
+            open=df['open'],
+            high=df['high'],
+            low=df['low'],
+            close=df['close'],
+            increasing_line_color='#00CC96',
+            decreasing_line_color='#FF4136',
+            name='Price'
+        )
+    )
     df['SMA'] = df['close'].rolling(5).mean()
-    fig_candle.add_trace(go.Scatter(
-        x=df['timestamp'],
-        y=df['SMA'],
-        line=dict(color='#2962ff', width=1.5),
-        name='Trend'
-    ))
+    fig_candle.add_trace(
+        go.Scatter(
+            x=df['timestamp'],
+            y=df['SMA'],
+            line=dict(color='#2962ff', width=1.5),
+            name='Trend'
+        )
+    )
     fig_candle.update_layout(
         template='plotly_dark',
         paper_bgcolor='rgba(0,0,0,0)',
@@ -1777,27 +2037,30 @@ def update_overview(n, selected_symbol, tf_data):
         style={'color': color, 'textShadow': f'0 0 15px {color}80'}
     )
 
+    # Bar chart
     bar_x, bar_y, bar_colors = [], [], []
     for s in TRACKER_SYMBOLS:
         if s in tickers:
             t = tickers[s]
             bar_x.append(SYMBOL_MAP.get(s, s))
-            bar_y.append(t['percentage'])
-            bar_colors.append('#00CC96' if t['percentage'] >= 0 else '#FF4136')
+            bar_y.append(t.get('percentage') or 0)
+            bar_colors.append('#00CC96' if (t.get('percentage') or 0) >= 0 else '#FF4136')
 
     if bar_x:
         sorted_bars = sorted(zip(bar_x, bar_y, bar_colors), key=lambda x: x[1], reverse=True)
         bar_x, bar_y, bar_colors = zip(*sorted_bars)
-        fig_bar = go.Figure(go.Bar(
+    else:
+        bar_x, bar_y, bar_colors = [], [], []
+
+    fig_bar = go.Figure(
+        go.Bar(
             x=list(bar_x),
             y=list(bar_y),
             marker_color=list(bar_colors),
-            text=[f"{y:.2f}%" for y in bar_y],
+            text=[f"{y:.2f}%" for y in bar_y] if bar_y else [],
             textposition='auto'
-        ))
-    else:
-        fig_bar = go.Figure()
-
+        )
+    )
     fig_bar.update_layout(
         template='plotly_dark',
         paper_bgcolor='rgba(0,0,0,0)',
@@ -1813,9 +2076,17 @@ def update_overview(n, selected_symbol, tf_data):
     elif tf_data['tf'] == '1w':
         title_suffix = "LONG TERM"
 
-    return fig_candle, price_html, metrics_html, fig_bar, f"{full_name} // {title_suffix}", tv_html
+    return (
+        fig_candle,
+        price_html,
+        metrics_html,
+        fig_bar,
+        f"{full_name} // {title_suffix}",
+        tv_html
+    )
 
 
+# MARKETS + TRENDING + NEWS + DEX (interval + refresh)
 @app.callback(
     [Output('markets-table-content', 'children'),
      Output('trending-content', 'children'),
@@ -1827,10 +2098,11 @@ def update_overview(n, selected_symbol, tf_data):
      Output('next-btn', 'disabled')],
     [Input('market-interval', 'n_intervals'),
      Input('prev-btn', 'n_clicks'),
-     Input('next-btn', 'n_clicks')],
+     Input('next-btn', 'n_clicks'),
+     Input('refresh-button', 'n_clicks')],
     [State('current-page-store', 'data')]
 )
-def update_market_trending_news_dex(n, prev_clicks, next_clicks, current_page):
+def update_market_trending_news_dex(n, prev_clicks, next_clicks, refresh_clicks, current_page):
     market_data = fetch_market_data()
     ctx_id = ctx.triggered_id
 
@@ -1847,7 +2119,8 @@ def update_market_trending_news_dex(n, prev_clicks, next_clicks, current_page):
             html.Div("Loading..."),
             current_page,
             f"Page {current_page} of 10",
-            True, True
+            True,
+            True
         )
 
     # Dex cards
@@ -1921,6 +2194,7 @@ def update_market_trending_news_dex(n, prev_clicks, next_clicks, current_page):
             )
         )
 
+    # Pagination
     start_idx = (current_page - 1) * 10
     end_idx = start_idx + 10
     page_data = market_data[start_idx:end_idx]
@@ -1935,20 +2209,21 @@ def update_market_trending_news_dex(n, prev_clicks, next_clicks, current_page):
         html.Th("7D %"),
         html.Th("TREND")
     ])
-
     rows = []
     for coin in page_data:
         col24 = 'positive' if coin['change_24h'] >= 0 else 'negative'
         col7d = 'positive' if coin['change_7d'] >= 0 else 'negative'
         spark_color = '#00CC96' if coin['change_7d'] >= 0 else '#FF4136'
 
-        fig_spark = go.Figure(go.Scatter(
-            y=coin['history'],
-            mode='lines',
-            line=dict(color=spark_color, width=2),
-            fill='tozeroy',
-            fillcolor="rgba(0,0,0,0)"
-        ))
+        fig_spark = go.Figure(
+            go.Scatter(
+                y=coin['history'],
+                mode='lines',
+                line=dict(color=spark_color, width=2),
+                fill='tozeroy',
+                fillcolor='rgba(0,0,0,0)'
+            )
+        )
         fig_spark.update_layout(
             template='plotly_dark',
             height=40,
@@ -1960,46 +2235,51 @@ def update_market_trending_news_dex(n, prev_clicks, next_clicks, current_page):
             plot_bgcolor='rgba(0,0,0,0)'
         )
 
-        rows.append(
-            html.Tr([
-                html.Td(coin['rank'], style={'color': '#666'}),
-                html.Td(
-                    html.Div(
-                        className='coin-cell',
-                        children=[
-                            html.Img(src=get_icon_url(coin['symbol']), className='coin-icon'),
-                            html.Div([
-                                html.Div(coin['name'], style={'fontWeight': '600'}),
-                                html.Div(
-                                    coin['symbol'].split('/')[0],
-                                    style={'fontSize': '0.75rem', 'color': '#888'}
-                                )
-                            ])
-                        ]
-                    )
-                ),
-                html.Td(
-                    format_currency(coin['price']),
-                    style={'fontWeight': '600', 'fontFamily': 'monospace'}
-                ),
-                html.Td(format_compact(coin['mkt_cap'])),
-                html.Td(format_compact(coin['volume'])),
-                html.Td(f"{coin['change_24h']:.2f}%", className=col24),
-                html.Td(f"{coin['change_7d']:.2f}%", className=col7d),
-                html.Td(dcc.Graph(figure=fig_spark, config={'staticPlot': True}), style={'padding': '0'})
-            ])
-        )
+        row = html.Tr([
+            html.Td(coin['rank'], style={'color': '#666'}),
+            html.Td(
+                html.Div(
+                    className='coin-cell',
+                    children=[
+                        html.Img(src=get_icon_url(coin['symbol']), className='coin-icon'),
+                        html.Div([
+                            html.Div(coin['name'], style={'fontWeight': '600'}),
+                            html.Div(
+                                coin['symbol'].split('/')[0],
+                                style={'fontSize': '0.75rem', 'color': '#888'}
+                            )
+                        ])
+                    ]
+                )
+            ),
+            html.Td(
+                format_currency(coin['price']),
+                style={'fontWeight': '600', 'fontFamily': 'monospace'}
+            ),
+            html.Td(format_compact(coin['mkt_cap'])),
+            html.Td(format_compact(coin['volume'])),
+            html.Td(f"{coin['change_24h']:.2f}%", className=col24),
+            html.Td(f"{coin['change_7d']:.2f}%", className=col7d),
+            html.Td(
+                dcc.Graph(figure=fig_spark, config={'staticPlot': True}),
+                style={'padding': '0'}
+            )
+        ])
+        rows.append(row)
 
-    table = html.Table([html.Thead(header), html.Tbody(rows)], className='crypto-table')
+    table = html.Table(
+        [html.Thead(header), html.Tbody(rows)],
+        className='crypto-table'
+    )
 
     # Trending
     gainers = sorted(market_data, key=lambda x: x['change_24h'], reverse=True)[:5]
     losers = sorted(market_data, key=lambda x: x['change_24h'])[:5]
 
     def create_trend_list(items):
-        rows_ = []
+        rows = []
         for i, coin in enumerate(items):
-            rows_.append(
+            rows.append(
                 html.Div(
                     className='trending-row',
                     style={
@@ -2033,7 +2313,7 @@ def update_market_trending_news_dex(n, prev_clicks, next_clicks, current_page):
                     ]
                 )
             )
-        return rows_
+        return rows
 
     trending_html = [
         html.Div(
@@ -2067,7 +2347,7 @@ def update_market_trending_news_dex(n, prev_clicks, next_clicks, current_page):
         card = html.Div(
             className='news-card',
             children=[
-                html.Img(src= news['image'], className='news-img'),
+                html.Img(src=news['image'], className='news-img'),
                 html.Div(
                     className='news-content',
                     children=[
@@ -2100,7 +2380,10 @@ def update_market_trending_news_dex(n, prev_clicks, next_clicks, current_page):
                                 html.A(
                                     "Read More >",
                                     href="#",
-                                    style={'color': '#00CC96', 'textDecoration': 'none'}
+                                    style={
+                                        'color': '#00CC96',
+                                        'textDecoration': 'none'
+                                    }
                                 )
                             ],
                             style={
@@ -2117,9 +2400,6 @@ def update_market_trending_news_dex(n, prev_clicks, next_clicks, current_page):
         )
         news_cards.append(card)
 
-    prev_disabled = (current_page == 1)
-    next_disabled = (current_page == 10)
-
     return (
         table,
         trending_html,
@@ -2127,23 +2407,10 @@ def update_market_trending_news_dex(n, prev_clicks, next_clicks, current_page):
         dex_cards,
         current_page,
         f"Page {current_page} of 10",
-        prev_disabled,
-        next_disabled
+        current_page == 1,
+        current_page == 10
     )
 
-# --- CLIENTSIDE REFRESH BUTTON ---
-app.clientside_callback(
-    """
-    function(n) {
-        if (n) {
-            window.location.reload();
-        }
-        return "";
-    }
-    """,
-    Output('refresh-dummy', 'children'),
-    Input('refresh-btn', 'n_clicks')
-)
 
 if __name__ == '__main__':
     app.run_server(debug=True)
