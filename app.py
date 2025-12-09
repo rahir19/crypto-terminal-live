@@ -107,7 +107,7 @@ def get_icon_url(symbol):
 
 def get_tradingview_html(symbol):
     tv_symbol = f"BINANCE:{symbol.replace('/', '')}"
-    return f"""<!DOCTYPE html><html><head><style>body, html {{ margin: 0; padding: 0; height: 100%; overflow: hidden; background-color: #0b0e11; }}</style></head><body><div class="tradingview-widget-container" style="height:100%;width:100%"><div id="tradingview_widget"></div><script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script><script type="text/javascript">new TradingView.widget({{"autosize": true, "symbol": "{tv_symbol}", "interval": "D", "timezone": "Asia/Kolkata", "theme": "dark", "style": "1", "locale": "en", "toolbar_bg": "#f1f3f6", "enable_publishing": false, "allow_symbol_change": true, "container_id": "tradingview_widget", "details": true, "hotlist": true, "calendar": true, "hide_side_toolbar": false, "backgroundColor": "rgba(11, 14, 17, 1)"}});</script></div></body></html>"""
+    return f"""<!DOCTYPE html><html><head><style>body, html {{ margin: 0; padding: 0; height: 100%; overflow: hidden; background-color: #0b0e11; }}</style></head><body><div class="tradingview-widget-container" style="height:100%;width:100%"><div id="tradingview_widget"></div><script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script><script type="text/javascript">new TradingView.widget({{"autosize": true, "symbol": "{tv_symbol}", "interval": "D", "timezone": "Asia/Kolkata", "theme": "dark", "style": "1", "locale": "en", "toolbar_bg": "#f1f3f6", "enable_publishing": false, "allow_symbol_change": true, "container_id": "tradingview_widget", "details": true, "hotlist": true, "calendar": true, "hide_side_toolbar": false, "backgroundColor": "rgba(11, 14, 17, 1)"}});</script></div></body></html>"""  # noqa: E501
 
 
 def generate_crypto_news():
@@ -281,7 +281,7 @@ def generate_global_market_data():
 app = Dash(__name__, title="Crypto Master", suppress_callback_exceptions=True)
 server = app.server
 
-# --- CSS / HTML SHELL ---
+# --- HTML SHELL + CSS ---
 app.index_string = '''
 <!DOCTYPE html>
 <html>
@@ -332,7 +332,6 @@ app.index_string = '''
             .contact-icon { font-size: 1.3rem; margin-right: 15px; width: 30px; text-align: center; color: var(--accent-gold); }
             .close-modal { position: absolute; top: 10px; right: 15px; background: none; border: none; color: #666; font-size: 1.5rem; cursor: pointer; }
             .profile-img { width: 120px; height: 120px; border-radius: 50%; object-fit: cover; border: 3px solid var(--accent-gold); margin-bottom: 10px; box-shadow: 0 0 15px rgba(0,0,0,0.4); }
-            .contact-link { color: #00E5FF; text-decoration: none; }
             ::-webkit-scrollbar { width: 8px; height: 8px; }
             ::-webkit-scrollbar-track { background: var(--bg-color); }
             ::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
@@ -467,21 +466,33 @@ login_layout = html.Div(className='login-container', children=[
                 html.I(className="fas fa-envelope contact-icon"),
                 html.Span("Raghavahir371@gmail.com")
             ]),
-            html.A(href="https://www.linkedin.com/in/raghav-ahir-117b8b357/", target="_blank",
-                   className='contact-item', children=[
-                       html.I(className="fab fa-linkedin contact-icon"),
-                       html.Span("LinkedIn Profile")
-                   ]),
-            html.A(href="https://github.com/rahir19", target="_blank",
-                   className='contact-item', children=[
-                       html.I(className="fab fa-github contact-icon"),
-                       html.Span("GitHub Profile")
-                   ]),
-            html.A(href="/assets/resume.pdf", target="_blank",
-                   className='contact-item', children=[
-                       html.I(className="fas fa-file contact-icon"),
-                       html.Span("Download Resume (PDF)")
-                   ]),
+            html.A(
+                href="https://www.linkedin.com/in/raghav-ahir-117b8b357/",
+                target="_blank",
+                className='contact-item',
+                children=[
+                    html.I(className="fab fa-linkedin contact-icon"),
+                    html.Span("LinkedIn Profile")
+                ]
+            ),
+            html.A(
+                href="https://github.com/rahir19",
+                target="_blank",
+                className='contact-item',
+                children=[
+                    html.I(className="fab fa-github contact-icon"),
+                    html.Span("GitHub Profile")
+                ]
+            ),
+            html.A(
+                href="/assets/resume.pdf",
+                target="_blank",
+                className='contact-item',
+                children=[
+                    html.I(className="fas fa-file contact-icon"),
+                    html.Span("Download Resume (PDF)")
+                ]
+            ),
         ])
     ])
 ])
@@ -500,6 +511,7 @@ dashboard_layout = html.Div([
     ], style={'position': 'relative'}),
 
     dcc.Tabs(parent_className='custom-tabs', className='custom-tabs-container', children=[
+        # --- Overview Tab ---
         dcc.Tab(label='Overview', className='custom-tab', selected_className='custom-tab--selected', children=[
             html.Div(className='control-panel', children=[
                 html.P("SELECT ASSET", style={'marginBottom': '8px', 'color': '#888', 'fontSize': '0.75rem', 'letterSpacing': '1px'}),
@@ -537,6 +549,8 @@ dashboard_layout = html.Div([
                 dcc.Graph(id='bar-chart-24h', style={'height': '300px'})
             ])
         ]),
+
+        # --- Technical Analysis Tab ---
         dcc.Tab(label='Technical Analysis', className='custom-tab', selected_className='custom-tab--selected', children=[
             html.Div(className='control-panel', style={'marginTop': '20px'}, children=[
                 html.P("SELECT ASSET FOR ANALYSIS", style={'marginBottom': '8px', 'color': '#888', 'fontSize': '0.75rem'}),
@@ -580,7 +594,7 @@ dashboard_layout = html.Div([
                         ])
                     ]),
                     html.Div(className='analytics-card', style={'marginBottom': '20px', 'padding': '25px', 'textAlign': 'center'}, children=[
-                        html.Div("CYCLE TOP INDICATOR", style={'color': '#888', 'fontSize': '0.8rem'}),
+                        html.Div("CYCLE TOP INDICATOR", style={'color': '#888', 'FontSize': '0.8rem'}),
                         html.Div(id='top-val-text', className='big-stat', style={'fontSize': '2.5rem', 'fontWeight': 'bold', 'margin': '10px 0'}),
                         html.Div(className='meter-bar-container', children=[
                             html.Div(className='meter-bar-top'),
@@ -599,6 +613,8 @@ dashboard_layout = html.Div([
                 ])
             ])
         ]),
+
+        # --- RWA Assets Tab ---
         dcc.Tab(label='RWA Assets', className='custom-tab', selected_className='custom-tab--selected', children=[
             html.Div(className='rwa-grid', children=[
                 html.Div(className='rwa-card', children=[
@@ -625,6 +641,8 @@ dashboard_layout = html.Div([
                 html.Div(id='rwa-table-content')
             ])
         ]),
+
+        # --- Global Market Tab ---
         dcc.Tab(label='Global Market', className='custom-tab', selected_className='custom-tab--selected', children=[
             html.Div(className='spot-grid', children=[
                 html.Div([
@@ -685,6 +703,8 @@ dashboard_layout = html.Div([
                 ])
             ])
         ]),
+
+        # --- TradingView Tab ---
         dcc.Tab(label='TradingView', className='custom-tab', selected_className='custom-tab--selected', children=[
             html.Div(style={'height': '800px', 'padding': '24px'}, children=[
                 html.Div(style={'width': '100%', 'height': '100%', 'borderRadius': '12px', 'overflow': 'hidden', 'boxShadow': '0 10px 30px rgba(0,0,0,0.5)'}, children=[
@@ -692,6 +712,8 @@ dashboard_layout = html.Div([
                 ])
             ])
         ]),
+
+        # --- Screeners Tab ---
         dcc.Tab(label='Screeners', className='custom-tab', selected_className='custom-tab--selected', children=[
             html.Div(className='market-table-container', style={'padding': '24px'}, children=[
                 html.H2("TOP 100 CRYPTOCURRENCIES", style={'color': 'white', 'marginBottom': '25px', 'fontSize': '1.5rem'}),
@@ -703,12 +725,16 @@ dashboard_layout = html.Div([
                 ])
             ])
         ]),
+
+        # --- DexScan Tab ---
         dcc.Tab(label='DexScan', className='custom-tab', selected_className='custom-tab--selected', children=[
             html.Div(style={'padding': '24px'}, children=[
                 html.H2("LIVE DEX PAIRS (SIMULATED)", style={'color': 'white', 'marginBottom': '25px'}),
                 html.Div(id='dexscan-content', className='dex-scroll-container', children="Loading DexScan...")
             ])
         ]),
+
+        # --- Upcoming Sales Tab ---
         dcc.Tab(label='Upcoming Sales', className='custom-tab', selected_className='custom-tab--selected', children=[
             html.Div(style={'padding': '24px'}, children=[
                 html.H2("🚀 HIGH POTENTIAL PRESALES", style={'color': '#00CC96', 'marginBottom': '30px', 'textAlign': 'center', 'letterSpacing': '2px'}),
@@ -738,9 +764,13 @@ dashboard_layout = html.Div([
                 ])
             ])
         ]),
+
+        # --- Trending Tab ---
         dcc.Tab(label='Trending', className='custom-tab', selected_className='custom-tab--selected', children=[
             html.Div(id='trending-content', className='trending-wrapper', children="Loading Trending Data...")
         ]),
+
+        # --- News Feed Tab ---
         dcc.Tab(label='News Feed', className='custom-tab', selected_className='custom-tab--selected', children=[
             html.Div(id='news-content', className='news-grid', children="Loading Latest Crypto News...")
         ])
@@ -773,7 +803,7 @@ app.layout = html.Div([
 
 # --- CALLBACKS ---
 
-# LOGIN + LOGOUT
+# LOGIN + LOGOUT (FIXED)
 @app.callback(
     [Output('page-content', 'children'),
      Output('login-error', 'children')],
@@ -781,24 +811,21 @@ app.layout = html.Div([
      Input('logout-btn', 'n_clicks')],
     [State('username-box', 'value'),
      State('password-box', 'value')],
-    prevent_initial_call=False
+    prevent_initial_call=True
 )
 def manage_login(login_clicks, logout_clicks, username, password):
     trigger = ctx.triggered_id
 
-    # First page load
-    if trigger is None:
-        return login_layout, ""
-
-    # Logout clicked
+    # Logout
     if trigger == 'logout-btn':
         return login_layout, ""
 
-    # Login clicked
+    # Login
     if trigger == 'login-button':
         if username == "admin" and password == "admin":
             return dashboard_layout, ""
-        return login_layout, "Invalid Credentials (Try: admin/admin)"
+        else:
+            return login_layout, "Invalid Credentials (Try: admin/admin)"
 
     return login_layout, ""
 
